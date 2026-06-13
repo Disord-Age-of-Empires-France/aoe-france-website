@@ -1,7 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ["@libsql/client"],
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.akamai.steamstatic.com",
+        pathname: "/steam/apps/**",
+      },
+    ],
+  },
 };
 
 export default nextConfig;

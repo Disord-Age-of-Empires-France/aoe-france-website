@@ -1,26 +1,59 @@
 @import "tailwindcss";
 
+/* ── Dark theme (default) ─────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --aoe-bg:         #080e1a;
+  --aoe-surface:    #0d1527;
+  --aoe-surface-2:  #0f1e3a;
+  --aoe-surface-3:  #06090f;
+  --aoe-border:     #1c2d47;
+  --aoe-text:       #ffffff;
+  --aoe-text-muted: #9ca3af;
+  --aoe-text-faint: #6b7280;
+  --aoe-gold:       #c8a32e;
+  --aoe-gold-light: #e5bb44;
+  --discord-blue:   #5865f2;
+  --discord-hover:  #4752c4;
 }
 
+/* ── Light theme ──────────────────────────────────────────────────────────── */
+html.light {
+  --aoe-bg:         #f4f6f9;
+  --aoe-surface:    #ffffff;
+  --aoe-surface-2:  #eaecf0;
+  --aoe-surface-3:  #f8f9fa;
+  --aoe-border:     #d0d7de;
+  --aoe-text:       #0f172a;
+  --aoe-text-muted: #475569;
+  --aoe-text-faint: #94a3b8;
+}
+
+/* ── Tailwind v4 tokens ───────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background:  var(--aoe-bg);
+  --color-foreground:  var(--aoe-text);
+  --color-surface:     var(--aoe-surface);
+  --color-surface-2:   var(--aoe-surface-2);
+  --color-surface-3:   var(--aoe-surface-3);
+  --color-border-site: var(--aoe-border);
+  --color-gold:        var(--aoe-gold);
+  --color-gold-light:  var(--aoe-gold-light);
+  --color-muted:       var(--aoe-text-muted);
+  --color-faint:       var(--aoe-text-faint);
+  --color-discord:     var(--discord-blue);
+  --color-discord-hover: var(--discord-hover);
+  --font-sans: var(--font-rajdhani);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--aoe-bg);
+  color: var(--aoe-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.site-logo {
+  mix-blend-mode: lighten;
+}
+html.light .site-logo {
+  mix-blend-mode: normal;
 }
