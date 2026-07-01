@@ -8,7 +8,7 @@ import { verifyPassword } from "@/lib/password";
 export async function login(
   _prev: unknown,
   formData: FormData
-): Promise<{ error: string } | void> {
+): Promise<{ error: string } | undefined> {
   const username = ((formData.get("username") as string) ?? "").trim();
   const password  =  (formData.get("password") as string) ?? "";
 
@@ -28,7 +28,7 @@ export async function login(
     role:     user.role,
     action:   "auth.login",
   });
-  redirect("/admin");
+  redirect(user.role === "member" ? "/profil" : "/admin");
 }
 
 export async function refreshSession(): Promise<void> {
@@ -36,10 +36,10 @@ export async function refreshSession(): Promise<void> {
   if (!session) redirect("/admin/login");
 
   const user = await getUser(session.userId);
-  if (!user || user.role === "member") redirect("/force-logout");
+  if (!user) redirect("/force-logout");
 
   await createSession({ userId: user.id, username: user.username, role: user.role });
-  redirect("/admin");
+  redirect(user.role === "member" ? "/profil" : "/admin");
 }
 
 export async function logout(): Promise<void> {

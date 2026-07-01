@@ -62,6 +62,13 @@ async function migrate() {
   // Discord OAuth columns
   try { await client.execute("ALTER TABLE users ADD COLUMN discord_id TEXT"); } catch { /* already exists */ }
   try { await client.execute("ALTER TABLE users ADD COLUMN discord_avatar TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN location TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN website TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN social_links TEXT NOT NULL DEFAULT '[]'"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN display_name_changed_at TEXT"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN profile_public INTEGER NOT NULL DEFAULT 1"); } catch { /* already exists */ }
   try {
     await client.execute(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_discord_id ON users(discord_id) WHERE discord_id IS NOT NULL"
@@ -73,6 +80,8 @@ async function migrate() {
   try { await client.execute("ALTER TABLE articles ADD COLUMN categories TEXT NOT NULL DEFAULT '[]'"); } catch { /* already exists */ }
   try { await client.execute("ALTER TABLE articles ADD COLUMN created_at TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
   try { await client.execute("ALTER TABLE articles ADD COLUMN published_at TEXT"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE articles ADD COLUMN scheduled_at TEXT"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE articles ADD COLUMN created_by TEXT"); } catch { /* already exists */ }
   // Migrate published boolean → status
   await client.execute("UPDATE articles SET status = 'published' WHERE published = 1 AND status = 'draft'");
   // Backfill published_at for already-published articles
@@ -187,9 +196,87 @@ async function migrate() {
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["navbar_items_news",      '["patch-notes","evenements","tournois"]'] },
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["navbar_items_guides",    '["aoe2","aoe3","aoe4","aom"]'] },
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["navbar_items_community", '["discord","tournois","evenements","partenaires"]'] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["maintenance_mode",    "0"] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["maintenance_message", ""] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["maintenance_end",     ""] },
     ],
     "write"
   );
+
+  // Forum tables
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS forum_categories (
+      id          TEXT    PRIMARY KEY,
+      slug        TEXT    UNIQUE NOT NULL,
+      name        TEXT    NOT NULL DEFAULT '',
+      description TEXT    NOT NULL DEFAULT '',
+      color       TEXT    NOT NULL DEFAULT 'amber',
+      icon        TEXT    NOT NULL DEFAULT '',
+      position    INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT    NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS forum_topics (
+      id                   TEXT    PRIMARY KEY,
+      category_id          TEXT    NOT NULL,
+      user_id              TEXT    NOT NULL,
+      title                TEXT    NOT NULL DEFAULT '',
+      content              TEXT    NOT NULL DEFAULT '',
+      pinned               INTEGER NOT NULL DEFAULT 0,
+      locked               INTEGER NOT NULL DEFAULT 0,
+      views                INTEGER NOT NULL DEFAULT 0,
+      created_at           TEXT    NOT NULL,
+      last_reply_at        TEXT,
+      last_reply_user_id   TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS forum_replies (
+      id         TEXT PRIMARY KEY,
+      topic_id   TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      content    TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      edited_at  TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS forum_reactions (
+      id          TEXT PRIMARY KEY,
+      target_id   TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      emoji       TEXT NOT NULL,
+      created_at  TEXT NOT NULL,
+      UNIQUE(target_id, target_type, user_id, emoji)
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS forum_reports (
+      id          TEXT PRIMARY KEY,
+      target_id   TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      reason      TEXT NOT NULL DEFAULT '',
+      resolved    INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL
+    )
+  `);
+  // Forum topic moderation status (default 'approved' pour les topics existants)
+  try { await client.execute("ALTER TABLE forum_topics ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE forum_topics ADD COLUMN deleted_reason TEXT"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE forum_topics ADD COLUMN rejected_reason TEXT"); } catch { /* already exists */ }
+
+  // Default forum categories
+  const forumSeedAt = "2026-06-30T00:00:00.000Z";
+  await client.batch([
+    { sql: "INSERT OR IGNORE INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: ["fcat-general", "general", "Général", "Discussions générales sur la communauté AoE France.", "amber", "💬", 0, forumSeedAt] },
+    { sql: "INSERT OR IGNORE INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: ["fcat-aoe2",    "aoe2",    "AoE II: DE", "Stratégies, build orders et discussions autour d'Age of Empires II.", "purple", "⚔️", 1, forumSeedAt] },
+    { sql: "INSERT OR IGNORE INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: ["fcat-aoe3",    "aoe3",    "AoE III: DE", "Stratégies et discussions autour d'Age of Empires III.", "green",  "🌿", 2, forumSeedAt] },
+    { sql: "INSERT OR IGNORE INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: ["fcat-aoe4",    "aoe4",    "AoE IV", "Stratégies et discussions autour d'Age of Empires IV.", "blue",   "🏰", 3, forumSeedAt] },
+    { sql: "INSERT OR IGNORE INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: ["fcat-aom",     "aom",     "AoM: Retold", "Panthéons, dieux et stratégies d'Age of Mythology: Retold.", "amber", "⚡", 4, forumSeedAt] },
+  ], "write");
 
   // Seed first admin from env vars if no users exist
   const { rows: countRows } = await client.execute("SELECT COUNT(*) as cnt FROM users");
@@ -232,7 +319,9 @@ function toArticle(row: Record<string, unknown>): Article {
     status,
     thumbnail:   String(row.thumbnail ?? ""),
     createdAt:   String(row.created_at ?? ""),
-    publishedAt: row.published_at ? String(row.published_at) : null,
+    publishedAt:  row.published_at  ? String(row.published_at)  : null,
+    scheduledAt:  row.scheduled_at  ? String(row.scheduled_at)  : null,
+    createdBy:    row.created_by    ? String(row.created_by)    : null,
   };
 }
 
@@ -247,6 +336,13 @@ function toUser(row: Record<string, unknown>): User {
     role:          (["admin", "editor", "member"].includes(role) ? role : "member") as UserRole,
     discordId:     row.discord_id ? String(row.discord_id) : null,
     discordAvatar: String(row.discord_avatar ?? ""),
+    avatar:        String(row.avatar ?? ""),
+    bio:           String(row.bio ?? ""),
+    location:      String(row.location ?? ""),
+    website:       String(row.website ?? ""),
+    socialLinks:   (() => { try { return JSON.parse(String(row.social_links ?? "[]")); } catch { return []; } })(),
+    displayNameChangedAt: row.display_name_changed_at ? String(row.display_name_changed_at) : null,
+    profilePublic: row.profile_public !== 0,
     createdAt:     String(row.created_at),
     lastLogin:     row.last_login ? String(row.last_login) : null,
   };
@@ -266,20 +362,29 @@ export interface Article {
   status:      ArticleStatus;
   thumbnail:   string;
   createdAt:   string;
-  publishedAt: string | null;
+  publishedAt:  string | null;
+  scheduledAt:  string | null;
+  createdBy:    string | null;
 }
 
 export interface User {
-  id:            string;
-  username:      string;
-  passwordHash:  string;
-  displayName:   string;
-  email:         string;
-  role:          UserRole;
-  discordId:     string | null;
-  discordAvatar: string;
-  createdAt:     string;
-  lastLogin:     string | null;
+  id:                   string;
+  username:             string;
+  passwordHash:         string;
+  displayName:          string;
+  email:                string;
+  role:                 UserRole;
+  discordId:            string | null;
+  discordAvatar:        string;
+  avatar:               string;
+  bio:                  string;
+  location:             string;
+  website:              string;
+  socialLinks:          { type: string; url: string }[];
+  displayNameChangedAt: string | null;
+  profilePublic:        boolean;
+  createdAt:            string;
+  lastLogin:            string | null;
 }
 
 export interface BotCommandField {
@@ -309,6 +414,11 @@ export interface BotCommand {
 export interface SiteSettings {
   discordInvite: string;
   siteName:      string;
+  maintenance: {
+    active:  boolean;
+    message: string;
+    endAt:   string | null;
+  };
   features: {
     news:      boolean;
     guides:    boolean;
@@ -333,14 +443,28 @@ export interface SiteSettings {
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
 
+async function publishScheduledArticles(): Promise<void> {
+  const now = new Date().toISOString();
+  await client.execute({
+    sql:  `UPDATE articles SET status = 'published',
+                date = scheduled_at,
+                published_at = COALESCE(published_at, scheduled_at),
+                scheduled_at = NULL
+           WHERE status = 'draft' AND scheduled_at IS NOT NULL AND scheduled_at <= ?`,
+    args: [now],
+  });
+}
+
 export async function getArticles(): Promise<Article[]> {
   await ensureReady();
+  await publishScheduledArticles();
   const { rows } = await client.execute("SELECT * FROM articles ORDER BY date DESC");
   return rows.map(toArticle);
 }
 
 export async function getPublishedArticles(): Promise<Article[]> {
   await ensureReady();
+  await publishScheduledArticles();
   const { rows } = await client.execute(
     "SELECT * FROM articles WHERE status = 'published' ORDER BY date DESC"
   );
@@ -359,14 +483,15 @@ export async function createArticle(
   await ensureReady();
   const id        = randomUUID();
   const createdAt = new Date().toISOString();
-  const publishedAt = data.status === "published" ? createdAt : null;
+  const publishedAt  = data.status === "published" ? createdAt : null;
+  const scheduledAt  = data.status === "draft" ? (data.scheduledAt ?? null) : null;
   await client.execute({
     sql: `INSERT INTO articles
-            (id, badge, badgeColor, categories, title, description, content, date, status, thumbnail, created_at, published_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [id, data.badge, data.badgeColor, JSON.stringify(data.categories), data.title, data.description, data.content, data.date, data.status, data.thumbnail, createdAt, publishedAt],
+            (id, badge, badgeColor, categories, title, description, content, date, status, thumbnail, created_at, published_at, scheduled_at, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [id, data.badge, data.badgeColor, JSON.stringify(data.categories), data.title, data.description, data.content, data.date, data.status, data.thumbnail, createdAt, publishedAt, scheduledAt, data.createdBy ?? null],
   });
-  return { ...data, id, createdAt, publishedAt };
+  return { ...data, id, createdAt, publishedAt, scheduledAt };
 }
 
 export async function updateArticle(
@@ -378,6 +503,7 @@ export async function updateArticle(
     badge: "badge", badgeColor: "badgeColor", categories: "categories",
     title: "title", description: "description", content: "content",
     date: "date", status: "status", thumbnail: "thumbnail",
+    scheduledAt: "scheduled_at",
   };
   const entries = Object.entries(data).filter(([k]) => DB_COL[k]);
   if (!entries.length) return;
@@ -385,10 +511,18 @@ export async function updateArticle(
   const args: InValue[] = entries.map(([k, val]) =>
     k === "categories" ? JSON.stringify(val) : String(val ?? "")
   );
-  // Set published_at the first time status becomes "published"
+  // Publish: set date + published_at once, clear scheduled_at
   if (data.status === "published") {
+    const now = new Date().toISOString();
     setClauses.push("published_at = COALESCE(published_at, ?)");
-    args.push(new Date().toISOString());
+    args.push(now);
+    setClauses.push("date = COALESCE(published_at, ?)");
+    args.push(now);
+    setClauses.push("scheduled_at = NULL");
+  }
+  // Archive: clear scheduled_at
+  if (data.status === "archived") {
+    setClauses.push("scheduled_at = NULL");
   }
   await client.execute({
     sql:  `UPDATE articles SET ${setClauses.join(", ")} WHERE id = ?`,
@@ -416,6 +550,11 @@ export async function getSettings(): Promise<SiteSettings> {
   return {
     discordInvite: map.discordInvite ?? "#discord",
     siteName:      map.siteName      ?? "Age of Empires France",
+    maintenance: {
+      active:  map.maintenance_mode === "1" && (!map.maintenance_end || new Date(map.maintenance_end).getTime() > Date.now()),
+      message: map.maintenance_message ?? "",
+      endAt:   map.maintenance_end || null,
+    },
     features: {
       news:      map.feature_news      !== "0",
       guides:    map.feature_guides    !== "0",
@@ -440,9 +579,12 @@ export async function getSettings(): Promise<SiteSettings> {
 }
 
 export async function updateSettings(data: {
-  discordInvite?:       string;
-  siteName?:            string;
-  feature_news?:        boolean;
+  discordInvite?:        string;
+  siteName?:             string;
+  maintenance_mode?:     boolean;
+  maintenance_message?:  string;
+  maintenance_end?:      string;
+  feature_news?:         boolean;
   feature_guides?:      boolean;
   feature_community?:   boolean;
   feature_game_aoe2?:   boolean;
@@ -459,8 +601,11 @@ export async function updateSettings(data: {
 }): Promise<void> {
   await ensureReady();
   const pairs: [string, string][] = [];
-  if (data.discordInvite       !== undefined) pairs.push(["discordInvite",       data.discordInvite]);
-  if (data.siteName            !== undefined) pairs.push(["siteName",            data.siteName]);
+  if (data.discordInvite        !== undefined) pairs.push(["discordInvite",        data.discordInvite]);
+  if (data.siteName             !== undefined) pairs.push(["siteName",             data.siteName]);
+  if (data.maintenance_mode     !== undefined) pairs.push(["maintenance_mode",     data.maintenance_mode ? "1" : "0"]);
+  if (data.maintenance_message  !== undefined) pairs.push(["maintenance_message",  data.maintenance_message]);
+  if (data.maintenance_end      !== undefined) pairs.push(["maintenance_end",      data.maintenance_end]);
   if (data.feature_news        !== undefined) pairs.push(["feature_news",        data.feature_news        ? "1" : "0"]);
   if (data.feature_guides      !== undefined) pairs.push(["feature_guides",      data.feature_guides      ? "1" : "0"]);
   if (data.feature_community   !== undefined) pairs.push(["feature_community",   data.feature_community   ? "1" : "0"]);
@@ -520,20 +665,28 @@ export async function createUser(data: {
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
     args: [id, data.username, data.passwordHash, data.displayName, data.email, data.role, createdAt],
   });
-  return { ...data, id, createdAt, lastLogin: null, discordId: null, discordAvatar: "" };
+  return { ...data, id, createdAt, lastLogin: null, discordId: null, discordAvatar: "", avatar: "", bio: "", location: "", website: "", socialLinks: [], displayNameChangedAt: null, profilePublic: true };
 }
 
 export async function updateUser(
   id: string,
-  data: Partial<{ username: string; passwordHash: string; displayName: string; email: string; role: UserRole }>
+  data: Partial<{ username: string; passwordHash: string; displayName: string; displayNameChangedAt: string; email: string; role: UserRole; avatar: string; discordAvatar: string; bio: string; location: string; website: string; socialLinks: string; profilePublic: string }>
 ): Promise<void> {
   await ensureReady();
   const COL: Record<string, string> = {
-    username:     "username",
-    passwordHash: "password_hash",
-    displayName:  "display_name",
-    email:        "email",
-    role:         "role",
+    username:             "username",
+    passwordHash:         "password_hash",
+    displayName:          "display_name",
+    displayNameChangedAt: "display_name_changed_at",
+    email:                "email",
+    role:                 "role",
+    avatar:               "avatar",
+    discordAvatar:        "discord_avatar",
+    bio:                  "bio",
+    location:             "location",
+    website:              "website",
+    socialLinks:          "social_links",
+    profilePublic:        "profile_public",
   };
   const entries = Object.entries(data).filter(([, v]) => v !== undefined);
   if (!entries.length) return;
@@ -591,7 +744,8 @@ export async function createDiscordUser(data: {
   return {
     id, username: data.username, passwordHash: "", displayName: data.displayName,
     email: data.email, role: "member", discordId: data.discordId,
-    discordAvatar: data.discordAvatar, createdAt, lastLogin: null,
+    discordAvatar: data.discordAvatar, avatar: "", bio: "", location: "", website: "", socialLinks: [],
+    displayNameChangedAt: null, profilePublic: true, createdAt, lastLogin: null,
   };
 }
 
@@ -746,4 +900,384 @@ export async function getLogs(limit = 200): Promise<Log[]> {
     args: [limit],
   });
   return rows.map(r => toLog(r as unknown as Record<string, unknown>));
+}
+
+// ─── Forum ────────────────────────────────────────────────────────────────────
+
+export interface ForumCategory {
+  id: string; slug: string; name: string; description: string;
+  color: string; icon: string; position: number; createdAt: string;
+  topicCount: number; replyCount: number;
+  lastTopicTitle: string | null; lastActivity: string | null; lastUsername: string | null;
+}
+
+export type ForumTopicStatus = "pending" | "approved" | "rejected" | "deleted";
+
+export interface ForumTopic {
+  id: string; categoryId: string; categorySlug: string; categoryName: string;
+  userId: string; username: string; displayName: string; avatar: string; role: UserRole;
+  title: string; content: string; pinned: boolean; locked: boolean;
+  status: ForumTopicStatus;
+  deletedReason: string | null;
+  rejectedReason: string | null;
+  views: number; replyCount: number; createdAt: string;
+  lastReplyAt: string | null; lastReplyUsername: string | null; lastReplyDisplayName: string | null;
+}
+
+export interface ForumReply {
+  id: string; topicId: string;
+  userId: string; username: string; displayName: string; avatar: string; role: UserRole;
+  content: string; createdAt: string; editedAt: string | null;
+}
+
+export interface ForumReaction { emoji: string; count: number; userReacted: boolean; }
+
+export interface ForumReport {
+  id: string; targetId: string; targetType: "topic" | "reply";
+  userId: string; username: string; reason: string; resolved: boolean; createdAt: string;
+  topicId: string | null; topicTitle: string | null; categorySlug: string | null;
+}
+
+function row2cat(r: Record<string, unknown>, stats?: { topicCount: number; replyCount: number; lastTopicTitle: string | null; lastActivity: string | null; lastUsername: string | null }): ForumCategory {
+  return {
+    id: String(r.id), slug: String(r.slug), name: String(r.name),
+    description: String(r.description ?? ""), color: String(r.color ?? "amber"),
+    icon: String(r.icon ?? ""), position: Number(r.position ?? 0),
+    createdAt: String(r.created_at),
+    topicCount: stats?.topicCount ?? Number(r.topic_count ?? 0),
+    replyCount: stats?.replyCount ?? Number(r.reply_count ?? 0),
+    lastTopicTitle: stats?.lastTopicTitle ?? (r.last_topic_title ? String(r.last_topic_title) : null),
+    lastActivity: stats?.lastActivity ?? (r.last_activity ? String(r.last_activity) : null),
+    lastUsername: stats?.lastUsername ?? (r.last_username ? String(r.last_username) : null),
+  };
+}
+
+function row2topic(r: Record<string, unknown>): ForumTopic {
+  const role = (["admin","editor","member"].includes(String(r.role ?? "")) ? String(r.role) : "member") as UserRole;
+  const status = (["pending","approved","rejected","deleted"].includes(String(r.status ?? "")) ? String(r.status) : "approved") as ForumTopicStatus;
+  return {
+    id: String(r.id), categoryId: String(r.category_id), categorySlug: String(r.category_slug ?? ""),
+    categoryName: String(r.category_name ?? ""), userId: String(r.user_id),
+    username: String(r.username ?? ""), displayName: String(r.display_name ?? "") || String(r.username ?? ""),
+    avatar: String(r.avatar || r.discord_avatar || ""), role,
+    title: String(r.title ?? ""), content: String(r.content ?? ""),
+    pinned: Number(r.pinned) !== 0, locked: Number(r.locked) !== 0,
+    status,
+    deletedReason: r.deleted_reason ? String(r.deleted_reason) : null,
+    rejectedReason: r.rejected_reason ? String(r.rejected_reason) : null,
+    views: Number(r.views ?? 0), replyCount: Number(r.reply_count ?? 0),
+    createdAt: String(r.created_at),
+    lastReplyAt: r.last_reply_at ? String(r.last_reply_at) : null,
+    lastReplyUsername: r.last_reply_username ? String(r.last_reply_username) : null,
+    lastReplyDisplayName: r.last_reply_display_name ? String(r.last_reply_display_name) : null,
+  };
+}
+
+function row2reply(r: Record<string, unknown>): ForumReply {
+  const role = (["admin","editor","member"].includes(String(r.role ?? "")) ? String(r.role) : "member") as UserRole;
+  return {
+    id: String(r.id), topicId: String(r.topic_id), userId: String(r.user_id),
+    username: String(r.username ?? ""), displayName: String(r.display_name ?? "") || String(r.username ?? ""),
+    avatar: String(r.avatar || r.discord_avatar || ""), role,
+    content: String(r.content ?? ""), createdAt: String(r.created_at),
+    editedAt: r.edited_at ? String(r.edited_at) : null,
+  };
+}
+
+export async function getForumCategories(): Promise<ForumCategory[]> {
+  await ensureReady();
+  const { rows } = await client.execute(`
+    SELECT fc.*,
+      (SELECT COUNT(*) FROM forum_topics ft WHERE ft.category_id = fc.id AND ft.status = 'approved') AS topic_count,
+      (SELECT COUNT(*) FROM forum_replies fr JOIN forum_topics ft ON fr.topic_id = ft.id WHERE ft.category_id = fc.id AND ft.status = 'approved') AS reply_count,
+      (SELECT ft2.title FROM forum_topics ft2 WHERE ft2.category_id = fc.id AND ft2.status = 'approved' ORDER BY COALESCE(ft2.last_reply_at, ft2.created_at) DESC LIMIT 1) AS last_topic_title,
+      (SELECT COALESCE(ft2.last_reply_at, ft2.created_at) FROM forum_topics ft2 WHERE ft2.category_id = fc.id AND ft2.status = 'approved' ORDER BY COALESCE(ft2.last_reply_at, ft2.created_at) DESC LIMIT 1) AS last_activity,
+      (SELECT u.display_name FROM forum_topics ft2 LEFT JOIN users u ON u.id = COALESCE(ft2.last_reply_user_id, ft2.user_id) WHERE ft2.category_id = fc.id AND ft2.status = 'approved' ORDER BY COALESCE(ft2.last_reply_at, ft2.created_at) DESC LIMIT 1) AS last_username
+    FROM forum_categories fc ORDER BY fc.position ASC
+  `);
+  return rows.map(r => row2cat(r as unknown as Record<string, unknown>));
+}
+
+export async function getForumCategory(slug: string): Promise<ForumCategory | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({ sql: "SELECT * FROM forum_categories WHERE slug = ?", args: [slug] });
+  if (!rows[0]) return undefined;
+  return row2cat(rows[0] as unknown as Record<string, unknown>);
+}
+
+export async function getForumTopics(categoryId: string, page = 1, limit = 20): Promise<{ topics: ForumTopic[]; total: number }> {
+  await ensureReady();
+  const offset = (page - 1) * limit;
+  const [{ rows }, { rows: countRows }] = await Promise.all([
+    client.execute({
+      sql: `SELECT ft.*, fc.slug AS category_slug, fc.name AS category_name,
+              u.username, u.display_name, u.avatar, u.discord_avatar, u.role,
+              (SELECT COUNT(*) FROM forum_replies fr WHERE fr.topic_id = ft.id) AS reply_count,
+              (SELECT u2.username FROM users u2 WHERE u2.id = ft.last_reply_user_id) AS last_reply_username,
+              (SELECT u2.display_name FROM users u2 WHERE u2.id = ft.last_reply_user_id) AS last_reply_display_name
+            FROM forum_topics ft
+            JOIN forum_categories fc ON fc.id = ft.category_id
+            JOIN users u ON u.id = ft.user_id
+            WHERE ft.category_id = ? AND ft.status = 'approved'
+            ORDER BY ft.pinned DESC, COALESCE(ft.last_reply_at, ft.created_at) DESC
+            LIMIT ? OFFSET ?`,
+      args: [categoryId, limit, offset],
+    }),
+    client.execute({ sql: "SELECT COUNT(*) as cnt FROM forum_topics WHERE category_id = ? AND status = 'approved'", args: [categoryId] }),
+  ]);
+  return { topics: rows.map(r => row2topic(r as unknown as Record<string, unknown>)), total: Number((countRows[0] as unknown as Record<string, unknown>)?.cnt ?? 0) };
+}
+
+export async function getForumTopic(id: string): Promise<ForumTopic | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: `SELECT ft.*, fc.slug AS category_slug, fc.name AS category_name,
+            u.username, u.display_name, u.avatar, u.discord_avatar, u.role,
+            (SELECT COUNT(*) FROM forum_replies fr WHERE fr.topic_id = ft.id) AS reply_count,
+            (SELECT u2.username FROM users u2 WHERE u2.id = ft.last_reply_user_id) AS last_reply_username,
+            (SELECT u2.display_name FROM users u2 WHERE u2.id = ft.last_reply_user_id) AS last_reply_display_name
+          FROM forum_topics ft
+          JOIN forum_categories fc ON fc.id = ft.category_id
+          JOIN users u ON u.id = ft.user_id
+          WHERE ft.id = ?`,
+    args: [id],
+  });
+  return rows[0] ? row2topic(rows[0] as unknown as Record<string, unknown>) : undefined;
+}
+
+export async function getForumReplies(topicId: string, page = 1, limit = 30): Promise<{ replies: ForumReply[]; total: number }> {
+  await ensureReady();
+  const offset = (page - 1) * limit;
+  const [{ rows }, { rows: countRows }] = await Promise.all([
+    client.execute({
+      sql: `SELECT fr.*, u.username, u.display_name, u.avatar, u.discord_avatar, u.role
+            FROM forum_replies fr JOIN users u ON u.id = fr.user_id
+            WHERE fr.topic_id = ? ORDER BY fr.created_at ASC LIMIT ? OFFSET ?`,
+      args: [topicId, limit, offset],
+    }),
+    client.execute({ sql: "SELECT COUNT(*) as cnt FROM forum_replies WHERE topic_id = ?", args: [topicId] }),
+  ]);
+  return { replies: rows.map(r => row2reply(r as unknown as Record<string, unknown>)), total: Number((countRows[0] as unknown as Record<string, unknown>)?.cnt ?? 0) };
+}
+
+export async function createForumTopic(data: { id: string; categoryId: string; userId: string; title: string; content: string; status?: ForumTopicStatus }): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql: "INSERT INTO forum_topics (id, category_id, user_id, title, content, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [data.id, data.categoryId, data.userId, data.title, data.content, data.status ?? "pending", new Date().toISOString()],
+  });
+}
+
+export async function getPendingForumTopics(): Promise<ForumTopic[]> {
+  await ensureReady();
+  const { rows } = await client.execute(`
+    SELECT ft.*, fc.slug AS category_slug, fc.name AS category_name,
+           u.username, u.display_name, u.avatar, u.discord_avatar, u.role,
+           0 AS reply_count, NULL AS last_reply_username, NULL AS last_reply_display_name
+    FROM forum_topics ft
+    JOIN forum_categories fc ON fc.id = ft.category_id
+    JOIN users u ON u.id = ft.user_id
+    WHERE ft.status = 'pending'
+    ORDER BY ft.created_at ASC
+  `);
+  return rows.map(r => row2topic(r as unknown as Record<string, unknown>));
+}
+
+export async function getDeletedForumTopics(): Promise<ForumTopic[]> {
+  await ensureReady();
+  const { rows } = await client.execute(`
+    SELECT ft.*, fc.slug AS category_slug, fc.name AS category_name,
+           u.username, u.display_name, u.avatar, u.discord_avatar, u.role,
+           (SELECT COUNT(*) FROM forum_replies fr WHERE fr.topic_id = ft.id) AS reply_count,
+           NULL AS last_reply_username, NULL AS last_reply_display_name
+    FROM forum_topics ft
+    JOIN forum_categories fc ON fc.id = ft.category_id
+    JOIN users u ON u.id = ft.user_id
+    WHERE ft.status = 'deleted'
+    ORDER BY ft.created_at DESC
+  `);
+  return rows.map(r => row2topic(r as unknown as Record<string, unknown>));
+}
+
+export async function getUserForumTopics(userId: string): Promise<ForumTopic[]> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: `SELECT ft.*, fc.slug AS category_slug, fc.name AS category_name,
+                 u.username, u.display_name, u.avatar, u.discord_avatar, u.role,
+                 (SELECT COUNT(*) FROM forum_replies fr WHERE fr.topic_id = ft.id) AS reply_count,
+                 NULL AS last_reply_username, NULL AS last_reply_display_name
+          FROM forum_topics ft
+          JOIN forum_categories fc ON fc.id = ft.category_id
+          JOIN users u ON u.id = ft.user_id
+          WHERE ft.user_id = ?
+          ORDER BY ft.created_at DESC`,
+    args: [userId],
+  });
+  return rows.map(r => row2topic(r as unknown as Record<string, unknown>));
+}
+
+export async function approveForumTopic(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "UPDATE forum_topics SET status = 'approved' WHERE id = ?", args: [id] });
+}
+
+export async function rejectForumTopic(id: string, reason: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "UPDATE forum_topics SET status = 'rejected', rejected_reason = ? WHERE id = ?", args: [reason || null, id] });
+}
+
+export async function createForumReply(data: { id: string; topicId: string; userId: string; content: string }): Promise<void> {
+  await ensureReady();
+  const now = new Date().toISOString();
+  await client.execute({ sql: "INSERT INTO forum_replies (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)", args: [data.id, data.topicId, data.userId, data.content, now] });
+  await client.execute({ sql: "UPDATE forum_topics SET last_reply_at = ?, last_reply_user_id = ? WHERE id = ?", args: [now, data.userId, data.topicId] });
+}
+
+export async function deleteForumTopic(id: string, reason: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "UPDATE forum_topics SET status = 'deleted', deleted_reason = ? WHERE id = ?", args: [reason || null, id] });
+}
+
+export async function deleteForumReply(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "DELETE FROM forum_reactions WHERE target_id = ? AND target_type = 'reply'", args: [id] });
+  await client.execute({ sql: "DELETE FROM forum_replies WHERE id = ?", args: [id] });
+}
+
+export async function toggleForumTopicPin(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "UPDATE forum_topics SET pinned = CASE WHEN pinned = 1 THEN 0 ELSE 1 END WHERE id = ?", args: [id] });
+}
+
+export async function toggleForumTopicLock(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "UPDATE forum_topics SET locked = CASE WHEN locked = 1 THEN 0 ELSE 1 END WHERE id = ?", args: [id] });
+}
+
+export async function incrementForumTopicViews(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "UPDATE forum_topics SET views = views + 1 WHERE id = ?", args: [id] });
+}
+
+export async function getForumReactions(targetIds: string[], targetType: string, userId?: string): Promise<Record<string, ForumReaction[]>> {
+  await ensureReady();
+  if (!targetIds.length) return {};
+  const placeholders = targetIds.map(() => "?").join(",");
+  const { rows } = await client.execute({
+    sql: `SELECT target_id, emoji, COUNT(*) as cnt, ${userId ? `MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END)` : "0"} AS user_reacted
+          FROM forum_reactions WHERE target_id IN (${placeholders}) AND target_type = ?
+          GROUP BY target_id, emoji ORDER BY cnt DESC`,
+    args: userId ? [userId, ...targetIds, targetType] : [...targetIds, targetType],
+  });
+  const result: Record<string, ForumReaction[]> = {};
+  for (const r of rows) {
+    const row = r as unknown as Record<string, unknown>;
+    const tid = String(row.target_id);
+    if (!result[tid]) result[tid] = [];
+    result[tid].push({ emoji: String(row.emoji), count: Number(row.cnt), userReacted: Number(row.user_reacted) === 1 });
+  }
+  return result;
+}
+
+export async function toggleForumReaction(targetId: string, targetType: string, userId: string, emoji: string): Promise<void> {
+  await ensureReady();
+  const { rows } = await client.execute({ sql: "SELECT id FROM forum_reactions WHERE target_id = ? AND target_type = ? AND user_id = ? AND emoji = ?", args: [targetId, targetType, userId, emoji] });
+  if (rows.length > 0) {
+    await client.execute({ sql: "DELETE FROM forum_reactions WHERE target_id = ? AND target_type = ? AND user_id = ? AND emoji = ?", args: [targetId, targetType, userId, emoji] });
+  } else {
+    await client.execute({ sql: "INSERT INTO forum_reactions (id, target_id, target_type, user_id, emoji, created_at) VALUES (?, ?, ?, ?, ?, ?)", args: [randomUUID(), targetId, targetType, userId, emoji, new Date().toISOString()] });
+  }
+}
+
+export async function createForumReport(data: { targetId: string; targetType: string; userId: string; reason: string }): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "INSERT INTO forum_reports (id, target_id, target_type, user_id, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)", args: [randomUUID(), data.targetId, data.targetType, data.userId, data.reason, new Date().toISOString()] });
+}
+
+export async function getForumReports(resolved = false): Promise<ForumReport[]> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: `SELECT r.*, u.username,
+            CASE WHEN r.target_type = 'topic' THEN r.target_id
+                 ELSE (SELECT fr.topic_id FROM forum_replies fr WHERE fr.id = r.target_id) END AS topic_id,
+            CASE WHEN r.target_type = 'topic' THEN (SELECT ft.title FROM forum_topics ft WHERE ft.id = r.target_id)
+                 ELSE (SELECT ft.title FROM forum_topics ft JOIN forum_replies fr ON fr.topic_id = ft.id WHERE fr.id = r.target_id) END AS topic_title,
+            CASE WHEN r.target_type = 'topic' THEN (SELECT fc.slug FROM forum_categories fc JOIN forum_topics ft ON ft.category_id = fc.id WHERE ft.id = r.target_id)
+                 ELSE (SELECT fc.slug FROM forum_categories fc JOIN forum_topics ft ON ft.category_id = fc.id JOIN forum_replies fr ON fr.topic_id = ft.id WHERE fr.id = r.target_id) END AS category_slug
+          FROM forum_reports r LEFT JOIN users u ON u.id = r.user_id
+          WHERE r.resolved = ? ORDER BY r.created_at DESC`,
+    args: [resolved ? 1 : 0],
+  });
+  return rows.map(r => {
+    const row = r as unknown as Record<string, unknown>;
+    return {
+      id: String(row.id), targetId: String(row.target_id),
+      targetType: String(row.target_type) as "topic" | "reply",
+      userId: String(row.user_id), username: String(row.username ?? ""),
+      reason: String(row.reason ?? ""), resolved: Number(row.resolved) !== 0,
+      createdAt: String(row.created_at),
+      topicId: row.topic_id ? String(row.topic_id) : null,
+      topicTitle: row.topic_title ? String(row.topic_title) : null,
+      categorySlug: row.category_slug ? String(row.category_slug) : null,
+    };
+  });
+}
+
+export async function resolveForumReport(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "UPDATE forum_reports SET resolved = 1 WHERE id = ?", args: [id] });
+}
+
+export async function createForumCategory(data: { id: string; slug: string; name: string; description: string; color: string; icon: string; position: number }): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "INSERT INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: [data.id, data.slug, data.name, data.description, data.color, data.icon, data.position, new Date().toISOString()] });
+}
+
+export async function updateForumCategory(id: string, data: Partial<{ name: string; description: string; color: string; icon: string; position: number; slug: string }>): Promise<void> {
+  await ensureReady();
+  const COL: Record<string, string> = { name: "name", description: "description", color: "color", icon: "icon", position: "position", slug: "slug" };
+  const entries = Object.entries(data).filter(([, v]) => v !== undefined);
+  if (!entries.length) return;
+  const set = entries.map(([k]) => `${COL[k]} = ?`).join(", ");
+  await client.execute({ sql: `UPDATE forum_categories SET ${set} WHERE id = ?`, args: [...entries.map(([, v]) => String(v!)), id] });
+}
+
+export async function deleteForumCategory(id: string): Promise<void> {
+  await ensureReady();
+  const { rows } = await client.execute({ sql: "SELECT id FROM forum_topics WHERE category_id = ?", args: [id] });
+  for (const r of rows) {
+    const topicId = String((r as unknown as Record<string, unknown>).id);
+    await client.execute({ sql: "DELETE FROM forum_replies WHERE topic_id = ?", args: [topicId] });
+    await client.execute({ sql: "DELETE FROM forum_reactions WHERE target_id = ? OR target_id IN (SELECT id FROM forum_replies WHERE topic_id = ?)", args: [topicId, topicId] });
+    await client.execute({ sql: "DELETE FROM forum_topics WHERE id = ?", args: [topicId] });
+  }
+  await client.execute({ sql: "DELETE FROM forum_categories WHERE id = ?", args: [id] });
+}
+
+export async function searchForum(query: string, limit = 30): Promise<ForumTopic[]> {
+  await ensureReady();
+  const q = `%${query}%`;
+  const { rows } = await client.execute({
+    sql: `SELECT ft.*, fc.slug AS category_slug, fc.name AS category_name,
+            u.username, u.display_name, u.avatar, u.discord_avatar, u.role,
+            (SELECT COUNT(*) FROM forum_replies fr WHERE fr.topic_id = ft.id) AS reply_count,
+            NULL AS last_reply_username, NULL AS last_reply_display_name
+          FROM forum_topics ft
+          JOIN forum_categories fc ON fc.id = ft.category_id
+          JOIN users u ON u.id = ft.user_id
+          WHERE ft.title LIKE ? OR ft.content LIKE ?
+          ORDER BY ft.created_at DESC LIMIT ?`,
+    args: [q, q, limit],
+  });
+  return rows.map(r => row2topic(r as unknown as Record<string, unknown>));
+}
+
+export async function getForumReply(id: string): Promise<ForumReply | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: `SELECT fr.*, u.username, u.display_name, u.avatar, u.discord_avatar, u.role
+          FROM forum_replies fr JOIN users u ON u.id = fr.user_id WHERE fr.id = ?`,
+    args: [id],
+  });
+  return rows[0] ? row2reply(rows[0] as unknown as Record<string, unknown>) : undefined;
 }

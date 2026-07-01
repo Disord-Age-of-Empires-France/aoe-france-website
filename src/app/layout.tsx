@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Rajdhani } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import ScrollToTop from "@/components/ScrollToTop";
+import InactivityTracker from "@/components/InactivityTracker";
+import LoginModal from "@/components/LoginModal";
 
 const rajdhani = Rajdhani({
   weight: ["400", "500", "600", "700"],
@@ -61,7 +64,12 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen flex flex-col">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {children}
+          <ScrollToTop />
+          <InactivityTracker />
+          <LoginModal />
+        </ThemeProvider>
       </body>
     </html>
   );

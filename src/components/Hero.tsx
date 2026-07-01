@@ -113,7 +113,7 @@ export default async function Hero() {
             </a>
 
             <Link
-              href="/decouvrir"
+              href="/communaute/discord"
               className="flex items-center gap-2 border border-white/30 hover:border-[#c8a32e]/80 text-white hover:text-[#c8a32e] font-bold text-sm tracking-wider px-6 py-3.5 rounded transition-colors"
             >
               EN SAVOIR PLUS

@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Save, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { User } from "@/lib/db";
 import DiscordIcon from "@/components/DiscordIcon";
+import CustomSelect from "./CustomSelect";
 
 const ROLE_OPTIONS = [
   { value: "admin",  label: "Administrateur", description: "Accès complet" },
@@ -24,8 +25,11 @@ interface Props {
 
 const INPUT = "w-full bg-background border border-border-site focus:border-[#c8a32e] focus:outline-none rounded px-4 py-3 text-foreground placeholder-faint text-sm transition-colors disabled:opacity-60";
 
+const ROLE_SELECT = ROLE_OPTIONS.map((o) => ({ value: o.value, label: o.label, description: o.description }));
+
 export default function UserForm({ action, user, mode, isSelf = false }: Props) {
   const [state, formAction, pending] = useActionState(action, undefined);
+  const [roleValue, setRoleValue] = useState<string>(user?.role ?? "editor");
 
   return (
     <form action={formAction} className="space-y-6">
@@ -94,18 +98,13 @@ export default function UserForm({ action, user, mode, isSelf = false }: Props) 
               <span className="ml-2 text-[11px] text-faint">(non modifiable sur votre propre compte)</span>
             </div>
           ) : (
-            <select
+            <CustomSelect
               name="role"
-              defaultValue={user?.role ?? "editor"}
+              value={roleValue}
+              onChange={setRoleValue}
+              options={ROLE_SELECT}
               disabled={pending}
-              className={INPUT}
-            >
-              {ROLE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label} — {o.description}
-                </option>
-              ))}
-            </select>
+            />
           )}
         </div>
 

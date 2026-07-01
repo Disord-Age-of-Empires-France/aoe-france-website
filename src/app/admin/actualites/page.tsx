@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { getArticles } from "@/lib/db";
 import { requireBOAccess } from "@/lib/auth-check";
-import { Plus, Pencil } from "lucide-react";
-import DeleteButton from "@/components/admin/DeleteButton";
+import { Plus, Newspaper, CheckCircle, FileText, Archive, CalendarDays } from "lucide-react";
+import { ARTICLE_CATEGORIES } from "@/lib/categories";
+import ArticleFilters from "@/components/admin/ArticleFilters";
 
 export const metadata = { title: "Actualités" };
 
@@ -14,21 +15,51 @@ const BADGE_CLASSES: Record<string, string> = {
   red:    "bg-red-800/60 text-red-300",
 };
 
-const STATUS_STYLE: Record<string, string> = {
-  published: "bg-emerald-900/50 text-emerald-400",
-  draft:     "bg-gray-800/50 text-gray-400",
-  archived:  "bg-orange-900/40 text-orange-400",
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  published: "Publié",
-  draft:     "Brouillon",
-  archived:  "Archivé",
+const BAR_CLASSES: Record<string, string> = {
+  blue:   "bg-blue-500",
+  green:  "bg-green-500",
+  amber:  "bg-amber-400",
+  purple: "bg-purple-500",
+  red:    "bg-red-500",
 };
 
 export default async function ActualitesPage() {
   const [articles, session] = await Promise.all([getArticles(), requireBOAccess()]);
   const isAdmin = session?.role === "admin";
+
+  const published  = articles.filter((a) => a.status === "published").length;
+  const drafts     = articles.filter((a) => a.status === "draft").length;
+  const archived   = articles.filter((a) => a.status === "archived").length;
+  const thisMonth  = articles.filter((a) => {
+    const d = a.publishedAt ?? a.date;
+    if (!d) return false;
+    const now = new Date();
+    const pub = new Date(d.length === 10 ? d + "T12:00:00" : d);
+    return pub.getFullYear() === now.getFullYear() && pub.getMonth() === now.getMonth();
+  }).length;
+
+  const GAMES = ARTICLE_CATEGORIES.filter((c) => c.group === "game");
+  const TAGS  = ARTICLE_CATEGORIES.filter((c) => c.group === "tag");
+
+  const gameCounts = GAMES.map((g) => ({
+    ...g,
+    count: articles.filter((a) => a.categories.includes(g.value)).length,
+  }));
+  const tagCounts = TAGS.map((t) => ({
+    ...t,
+    count: articles.filter((a) => a.categories.includes(t.value)).length,
+  }));
+
+  const maxGame = Math.max(...gameCounts.map((g) => g.count), 1);
+  const maxTag  = Math.max(...tagCounts.map((t) => t.count), 1);
+
+  const stats = [
+    { label: "Total",           value: articles.length, icon: Newspaper,     color: "text-[#c8a32e] bg-[#c8a32e]/10" },
+    { label: "Publiés",         value: published,        icon: CheckCircle,   color: "text-emerald-400 bg-emerald-400/10" },
+    { label: "Brouillons",      value: drafts,           icon: FileText,      color: "text-muted bg-border-site/30" },
+    { label: "Archivés",        value: archived,         icon: Archive,       color: "text-orange-400 bg-orange-400/10" },
+    { label: "Ce mois",         value: thisMonth,        icon: CalendarDays,  color: "text-blue-400 bg-blue-400/10" },
+  ] as const;
 
   return (
     <div className="space-y-6">
@@ -48,73 +79,70 @@ export default async function ActualitesPage() {
         </Link>
       </div>
 
-      <div className="bg-surface border border-border-site rounded-lg overflow-hidden">
-        {articles.length === 0 ? (
-          <div className="px-6 py-16 text-center text-faint text-sm">
-            Aucun article.{" "}
-            <Link href="/admin/actualites/nouveau" className="text-[#c8a32e] hover:underline">
-              Créer le premier →
-            </Link>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {stats.map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="bg-surface border border-border-site rounded-lg px-4 py-4 flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${color}`}>
+              <Icon size={17} />
+            </div>
+            <div>
+              <div className="text-xl font-bold text-foreground">{value}</div>
+              <div className="text-[11px] text-faint font-medium tracking-wide">{label}</div>
+            </div>
           </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border-site">
-                <th className="text-left px-5 py-3.5 text-xs font-semibold tracking-wider text-faint uppercase">Titre</th>
-                <th className="text-left px-4 py-3.5 text-xs font-semibold tracking-wider text-faint uppercase hidden sm:table-cell">Catégories</th>
-                <th className="text-left px-4 py-3.5 text-xs font-semibold tracking-wider text-faint uppercase hidden md:table-cell">Date</th>
-                <th className="text-left px-4 py-3.5 text-xs font-semibold tracking-wider text-faint uppercase">Statut</th>
-                <th className="px-4 py-3.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-site">
-              {articles.map((article) => (
-                <tr key={article.id} className="hover:bg-surface-2 transition-colors">
-                  <td className="px-5 py-4">
-                    <span className="text-foreground font-medium leading-snug line-clamp-1">
-                      {article.title}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 hidden sm:table-cell">
-                    <div className="flex flex-wrap gap-1">
-                      {article.categories.length > 0
-                        ? article.categories.map((cat) => (
-                            <span
-                              key={cat}
-                              className={`text-[10px] font-bold tracking-wider px-2 py-0.5 rounded ${BADGE_CLASSES[article.badgeColor] ?? BADGE_CLASSES.blue}`}
-                            >
-                              {cat}
-                            </span>
-                          ))
-                        : <span className="text-faint text-xs">—</span>
-                      }
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 hidden md:table-cell">
-                    <span className="text-faint text-xs">{article.date}</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className={`text-[10px] font-semibold px-2.5 py-1 rounded ${STATUS_STYLE[article.status] ?? STATUS_STYLE.draft}`}>
-                      {STATUS_LABEL[article.status] ?? "Brouillon"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-4 justify-end">
-                      <Link
-                        href={`/admin/actualites/${article.id}`}
-                        className="flex items-center gap-1.5 text-faint hover:text-[#c8a32e] text-sm font-medium transition-colors"
-                      >
-                        <Pencil size={13} />Modifier
-                      </Link>
-                      {isAdmin && <DeleteButton id={article.id} />}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        ))}
       </div>
+
+      {/* Distribution par jeu et par type */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Par jeu */}
+        <div className="bg-surface border border-border-site rounded-lg p-4 space-y-3">
+          <p className="text-[11px] font-bold tracking-widest text-faint uppercase">Par jeu</p>
+          <div className="space-y-2.5">
+            {gameCounts.map(({ value, label, color, count }) => (
+              <div key={value} className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold tracking-wider px-2 py-0.5 rounded ${BADGE_CLASSES[color] ?? BADGE_CLASSES.blue}`}>
+                    {label}
+                  </span>
+                  <span className="text-xs font-semibold text-muted tabular-nums">{count}</span>
+                </div>
+                <div className="h-1 bg-border-site/40 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${BAR_CLASSES[color] ?? BAR_CLASSES.blue}`}
+                    style={{ width: `${(count / maxGame) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Par type */}
+        <div className="bg-surface border border-border-site rounded-lg p-4 space-y-3">
+          <p className="text-[11px] font-bold tracking-widest text-faint uppercase">Par type</p>
+          <div className="space-y-2.5">
+            {tagCounts.map(({ value, label, color, count }) => (
+              <div key={value} className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-bold tracking-wider px-2 py-0.5 rounded ${BADGE_CLASSES[color] ?? BADGE_CLASSES.blue}`}>
+                    {label}
+                  </span>
+                  <span className="text-xs font-semibold text-muted tabular-nums">{count}</span>
+                </div>
+                <div className="h-1 bg-border-site/40 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${BAR_CLASSES[color] ?? BAR_CLASSES.blue}`}
+                    style={{ width: `${(count / maxTag) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <ArticleFilters articles={articles} isAdmin={isAdmin} />
     </div>
   );
 }

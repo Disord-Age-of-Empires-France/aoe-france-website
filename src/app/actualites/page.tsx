@@ -33,12 +33,27 @@ function formatDate(iso: string): string {
   } catch { return iso; }
 }
 
+function buildUrl(params: { jeu?: string; type?: string }): string {
+  const search = new URLSearchParams();
+  if (params.jeu)  search.set("jeu",  params.jeu);
+  if (params.type) search.set("type", params.type);
+  const qs = search.toString();
+  return `/actualites${qs ? `?${qs}` : ""}`;
+}
+
+const FILTER_BTN = (active: boolean) =>
+  `shrink-0 px-4 py-1.5 rounded text-[11px] font-bold tracking-wider border transition-colors ${
+    active
+      ? "bg-[#c8a32e] text-[#080e1a] border-[#c8a32e]"
+      : "border-border-site text-muted hover:border-[#c8a32e]/50 hover:text-[#c8a32e]"
+  }`;
+
 interface Props {
-  searchParams: Promise<{ categorie?: string }>;
+  searchParams: Promise<{ jeu?: string; type?: string }>;
 }
 
 export default async function ActualitesPage({ searchParams }: Props) {
-  const { categorie } = await searchParams;
+  const { jeu, type } = await searchParams;
   const [articles, settings, session] = await Promise.all([
     getPublishedArticles(),
     getSettings(),
@@ -46,21 +61,27 @@ export default async function ActualitesPage({ searchParams }: Props) {
   ]);
   gateFeature(settings, session, settings.features.news);
 
-  const filtered = categorie
-    ? articles.filter((a) => a.categories.includes(categorie))
-    : articles;
+  const filtered = articles.filter((a) => {
+    if (jeu  && !a.categories.includes(jeu))  return false;
+    if (type && !a.categories.includes(type)) return false;
+    return true;
+  });
 
   const featured = filtered[0];
   const rest     = filtered.slice(1);
 
+  const gameCategories = ARTICLE_CATEGORIES.filter((c) => c.group === "game");
+  const tagCategories  = ARTICLE_CATEGORIES.filter((c) => c.group === "tag");
+
   return (
     <>
-      <Navbar discordInvite={settings.discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} />
+      <Navbar discordInvite={settings.discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} maintenanceActive={settings.maintenance.active}
+        maintenanceEndAt={settings.maintenance.endAt} />
 
       {/* Page hero */}
       <div className="pt-16 bg-background border-b border-border-site">
         <div className="max-w-7xl mx-auto px-4 py-12">
-          <p className="text-[#c8a32e] text-xs font-bold tracking-[0.3em] mb-3">COMMUNAUTÉ · AOE FRANCE</p>
+          <p className="text-[#c8a32e] text-xs font-bold tracking-[0.3em] mb-3">AOE FRANCE</p>
           <h1 className="text-4xl md:text-5xl font-bold tracking-wide text-foreground mb-2">ACTUALITÉS</h1>
           <div className="w-12 h-0.5 bg-[#c8a32e] mb-6" />
           <p className="text-muted text-sm max-w-xl">
@@ -72,36 +93,41 @@ export default async function ActualitesPage({ searchParams }: Props) {
       <main className="flex-1 bg-background">
         <div className="max-w-7xl mx-auto px-4 py-10">
 
-          {/* Category filter */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-10 scrollbar-hide">
-            <Link
-              href="/actualites"
-              className={`shrink-0 px-4 py-1.5 rounded text-[11px] font-bold tracking-wider border transition-colors ${
-                !categorie
-                  ? "bg-[#c8a32e] text-[#080e1a] border-[#c8a32e]"
-                  : "border-border-site text-muted hover:border-[#c8a32e]/50 hover:text-[#c8a32e]"
-              }`}
-            >
-              TOUT
-            </Link>
-            {ARTICLE_CATEGORIES.map((cat) => (
-              <Link
-                key={cat.value}
-                href={`/actualites?categorie=${encodeURIComponent(cat.value)}`}
-                className={`shrink-0 px-4 py-1.5 rounded text-[11px] font-bold tracking-wider border transition-colors ${
-                  categorie === cat.value
-                    ? "bg-[#c8a32e] text-[#080e1a] border-[#c8a32e]"
-                    : "border-border-site text-muted hover:border-[#c8a32e]/50 hover:text-[#c8a32e]"
-                }`}
-              >
-                {cat.label}
-              </Link>
-            ))}
+          {/* Category filters */}
+          <div className="space-y-2 mb-10">
+            {/* Jeu */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              <span className="shrink-0 text-[10px] font-bold tracking-widest text-faint uppercase w-10">JEU</span>
+              <Link href={buildUrl({ type })} className={FILTER_BTN(!jeu)}>TOUS</Link>
+              {gameCategories.map((cat) => (
+                <Link
+                  key={cat.value}
+                  href={buildUrl({ jeu: jeu === cat.value ? undefined : cat.value, type })}
+                  className={FILTER_BTN(jeu === cat.value)}
+                >
+                  {cat.label}
+                </Link>
+              ))}
+            </div>
+            {/* Type */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              <span className="shrink-0 text-[10px] font-bold tracking-widest text-faint uppercase w-10">TYPE</span>
+              <Link href={buildUrl({ jeu })} className={FILTER_BTN(!type)}>TOUS</Link>
+              {tagCategories.map((cat) => (
+                <Link
+                  key={cat.value}
+                  href={buildUrl({ jeu, type: type === cat.value ? undefined : cat.value })}
+                  className={FILTER_BTN(type === cat.value)}
+                >
+                  {cat.label}
+                </Link>
+              ))}
+            </div>
           </div>
 
           {filtered.length === 0 ? (
             <div className="text-center py-24 text-faint">
-              <p className="text-lg font-semibold">Aucun article dans cette catégorie.</p>
+              <p className="text-lg font-semibold">Aucun article pour ces filtres.</p>
               <Link href="/actualites" className="mt-4 inline-block text-[#c8a32e] text-sm hover:underline">
                 Voir toutes les actualités →
               </Link>
@@ -115,9 +141,9 @@ export default async function ActualitesPage({ searchParams }: Props) {
                   href={`/actualites/${featured.id}`}
                   className={`group block rounded-lg overflow-hidden border border-border-site ${BORDER_ACCENT[featured.badgeColor] ?? "hover:border-[#c8a32e]/40"} transition-all`}
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 md:h-72">
                     {/* Thumbnail */}
-                    <div className="relative h-56 md:h-auto bg-surface overflow-hidden">
+                    <div className="relative h-56 md:h-full bg-surface overflow-hidden">
                       {featured.thumbnail ? (
                         <img
                           src={featured.thumbnail}
@@ -134,7 +160,7 @@ export default async function ActualitesPage({ searchParams }: Props) {
                     </div>
 
                     {/* Content */}
-                    <div className="bg-surface p-8 flex flex-col justify-center">
+                    <div className="bg-surface p-8 flex flex-col justify-center overflow-hidden">
                       <div className="flex flex-wrap gap-1.5 mb-4">
                         {featured.categories.map((cat) => (
                           <span key={cat} className={`text-[10px] font-bold tracking-wider px-2.5 py-0.5 rounded ${BADGE_CLASSES[featured.badgeColor] ?? BADGE_CLASSES.blue}`}>

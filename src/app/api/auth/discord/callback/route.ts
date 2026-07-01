@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createSession } from "@/lib/session";
-import { getUserByDiscordId, createDiscordUser, updateUserLastLogin, createLog } from "@/lib/db";
+import { getUserByDiscordId, createDiscordUser, updateUser, updateUserLastLogin, createLog } from "@/lib/db";
 
 interface DiscordUser {
   id:          string;
@@ -17,8 +17,16 @@ export async function GET(request: NextRequest) {
   const state       = searchParams.get("state");
   const storedState = request.cookies.get("discord_oauth_state")?.value;
 
-  const fail = (reason: string) =>
-    NextResponse.redirect(new URL(`/connexion?error=${reason}`, request.url));
+  const returnTo = request.cookies.get("discord_return_to")?.value ?? "/";
+
+  function fail(reason: string) {
+    const dest  = returnTo.startsWith("/") ? returnTo : "/";
+    const sep   = dest.includes("?") ? "&" : "?";
+    const res   = NextResponse.redirect(new URL(`${dest}${sep}loginError=${reason}`, request.url));
+    res.cookies.delete("discord_return_to");
+    res.cookies.delete("discord_oauth_state");
+    return res;
+  }
 
   if (!code || !state || state !== storedState) return fail("invalid_state");
 
@@ -71,6 +79,15 @@ export async function GET(request: NextRequest) {
         discordAvatar,
       });
     }
+  } else {
+    // Sync Discord fields that may have changed since last login
+    const freshDisplayName = discordUser.global_name ?? discordUser.username;
+    const freshEmail       = discordUser.email ?? "";
+    const updates: Parameters<typeof updateUser>[1] = {};
+    if (user.discordAvatar !== discordAvatar)             updates.discordAvatar = discordAvatar;
+    if (user.displayName   !== freshDisplayName)          updates.displayName   = freshDisplayName;
+    if (user.email         !== freshEmail && freshEmail)  updates.email         = freshEmail;
+    if (Object.keys(updates).length > 0) await updateUser(user.id, updates);
   }
 
   await createSession({ userId: user.id, username: user.username, role: user.role });
@@ -84,8 +101,10 @@ export async function GET(request: NextRequest) {
     targetId: discordUser.id,
   });
 
-  const dest = user.role === "admin" || user.role === "editor" ? "/admin" : "/";
+  const isMod  = user.role === "admin" || user.role === "editor";
+  const dest   = isMod ? "/admin" : (returnTo.startsWith("/") ? returnTo : "/");
   const response = NextResponse.redirect(new URL(dest, request.url));
   response.cookies.delete("discord_oauth_state");
+  response.cookies.delete("discord_return_to");
   return response;
 }

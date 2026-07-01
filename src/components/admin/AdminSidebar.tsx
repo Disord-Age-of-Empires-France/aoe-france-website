@@ -15,14 +15,16 @@ import {
   CircleUser,
   ScrollText,
   Bot,
+  MessageSquare,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import ThemeToggle from "@/components/ThemeToggle";
 import type { UserRole } from "@/lib/session";
 
 const NAV_ALL = [
-  { label: "Tableau de bord", href: "/admin",           icon: LayoutDashboard, exact: true },
-  { label: "Actualités",      href: "/admin/actualites", icon: Newspaper,       exact: false },
+  { label: "Tableau de bord", href: "/admin",           icon: LayoutDashboard,  exact: true  },
+  { label: "Actualités",      href: "/admin/actualites", icon: Newspaper,        exact: false },
+  { label: "Forum",           href: "/admin/forum",      icon: MessageSquare,    exact: false },
 ];
 
 const NAV_ADMIN = [
@@ -39,14 +41,14 @@ interface Props {
 
 export default function AdminSidebar({ username, role }: Props) {
   const pathname = usePathname();
-  const navItems = role === "admin" ? [...NAV_ALL, ...NAV_ADMIN] : NAV_ALL;
+  const navItems = role === "admin" ? [...NAV_ALL, ...NAV_ADMIN] : role === "editor" ? NAV_ALL : [];
 
   function isActive(href: string, exact: boolean) {
     return exact ? pathname === href : pathname.startsWith(href);
   }
 
   return (
-    <aside className="w-60 shrink-0 flex flex-col bg-surface-3 border-r border-border-site min-h-screen">
+    <aside className="w-60 shrink-0 flex flex-col bg-surface-3 border-r border-border-site h-screen sticky top-0 overflow-y-auto">
       {/* Logo */}
       <div className="px-5 py-6 border-b border-border-site">
         <Link href="/" target="_blank">
@@ -66,9 +68,11 @@ export default function AdminSidebar({ username, role }: Props) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-5 space-y-0.5">
-        <p className="px-2 mb-3 text-[10px] tracking-widest text-faint uppercase font-semibold">
-          Menu
-        </p>
+        {navItems.length > 0 && (
+          <p className="px-2 mb-3 text-[10px] tracking-widest text-faint uppercase font-semibold">
+            Menu
+          </p>
+        )}
         {navItems.map((item) => {
           const active = isActive(item.href, item.exact);
           return (
@@ -93,15 +97,15 @@ export default function AdminSidebar({ username, role }: Props) {
             Liens rapides
           </p>
           <Link
-            href="/admin/profil"
+            href="/profil"
             className={`flex items-center gap-3 px-3 py-2.5 rounded text-sm font-medium transition-colors ${
-              pathname === "/admin/profil"
+              pathname === "/profil"
                 ? "bg-[#c8a32e]/10 text-[#c8a32e] border border-[#c8a32e]/20"
                 : "text-muted hover:text-foreground hover:bg-surface"
             }`}
           >
             <CircleUser size={15} />
-            <span>Mon profil</span>
+            <span>Mon compte</span>
           </Link>
           <a
             href="/"

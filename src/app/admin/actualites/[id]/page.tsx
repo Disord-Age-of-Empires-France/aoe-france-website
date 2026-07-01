@@ -24,7 +24,6 @@ export default async function EditArticlePage({ params }: Props) {
   const boundAction = updateArticleAction.bind(null, id);
   const isAdmin    = session?.role === "admin";
   const canDelete  = isAdmin;
-  const canEditDate = isAdmin;
 
   return (
     <div className="space-y-6">
@@ -41,7 +40,7 @@ export default async function EditArticlePage({ params }: Props) {
       </div>
 
       <div className="bg-surface border border-border-site rounded-lg p-6">
-        <ArticleForm action={boundAction} article={article} mode="edit" canDelete={canDelete} canEditDate={canEditDate} />
+        <ArticleForm action={boundAction} article={article} mode="edit" canDelete={canDelete} />
       </div>
     </div>
   );

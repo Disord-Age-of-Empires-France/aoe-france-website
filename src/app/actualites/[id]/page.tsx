@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import { getArticle, getPublishedArticles, getSettings } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { gateFeature } from "@/lib/public-access";
+import { renderMarkdown } from "@/lib/markdown";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -42,146 +43,6 @@ function formatDate(iso: string): string {
   } catch { return iso; }
 }
 
-// ─── Markdown renderer ────────────────────────────────────────────────────────
-
-function inlineFormat(text: string): React.ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("**") && part.endsWith("**"))
-      return <strong key={i} className="text-white font-bold">{part.slice(2, -2)}</strong>;
-    if (part.startsWith("*") && part.endsWith("*"))
-      return <em key={i} className="text-gray-300 italic">{part.slice(1, -1)}</em>;
-    if (part.startsWith("`") && part.endsWith("`"))
-      return <code key={i} className="bg-[#0a0f1e] text-[#c8a32e] px-1.5 py-0.5 rounded text-[0.85em] font-mono">{part.slice(1, -1)}</code>;
-    return part;
-  });
-}
-
-function renderMarkdown(md: string): React.ReactNode {
-  if (!md?.trim()) return <p className="text-gray-500 italic text-sm">Aucun contenu.</p>;
-
-  const lines = md.split("\n");
-  const out: React.ReactNode[] = [];
-  let idx = 0;
-
-  while (idx < lines.length) {
-    const raw  = lines[idx];
-    const line = raw.trim();
-
-    // Empty line
-    if (!line) { idx++; continue; }
-
-    // Code block
-    if (line.startsWith("```")) {
-      const codeLines: string[] = [];
-      idx++;
-      while (idx < lines.length && !lines[idx].trim().startsWith("```")) {
-        codeLines.push(lines[idx]);
-        idx++;
-      }
-      idx++; // skip closing ```
-      out.push(
-        <pre key={idx} className="my-5 bg-[#0a0f1e] border border-[#1c2d47] rounded-lg p-4 overflow-x-auto text-[0.82em] font-mono text-gray-300 leading-relaxed">
-          <code>{codeLines.join("\n")}</code>
-        </pre>
-      );
-      continue;
-    }
-
-    // Headings
-    if (line.startsWith("### ")) {
-      out.push(<h3 key={idx} className="text-base font-bold text-white mt-7 mb-2 tracking-wide">{inlineFormat(line.slice(4))}</h3>);
-      idx++; continue;
-    }
-    if (line.startsWith("## ")) {
-      out.push(<h2 key={idx} className="text-lg font-bold text-white mt-9 mb-3 tracking-wide border-b border-[#1c2d47] pb-2">{inlineFormat(line.slice(3))}</h2>);
-      idx++; continue;
-    }
-    if (line.startsWith("# ")) {
-      out.push(<h1 key={idx} className="text-xl font-bold text-white mt-9 mb-3 tracking-wide">{inlineFormat(line.slice(2))}</h1>);
-      idx++; continue;
-    }
-
-    // Unordered list — collect consecutive items
-    if (/^[-*] /.test(line)) {
-      const items: string[] = [];
-      while (idx < lines.length && /^[-*] /.test(lines[idx].trim())) {
-        items.push(lines[idx].trim().slice(2));
-        idx++;
-      }
-      out.push(
-        <ul key={idx} className="my-3 ml-5 space-y-2">
-          {items.map((item, j) => (
-            <li key={j} className="flex items-start gap-2.5 text-gray-300 text-sm leading-relaxed">
-              <span className="text-[#c8a32e] mt-[5px] shrink-0 text-[9px]">▸</span>
-              <span>{inlineFormat(item)}</span>
-            </li>
-          ))}
-        </ul>
-      );
-      continue;
-    }
-
-    // Ordered list — collect consecutive items
-    if (/^\d+\. /.test(line)) {
-      const items: string[] = [];
-      while (idx < lines.length && /^\d+\. /.test(lines[idx].trim())) {
-        items.push(lines[idx].trim().replace(/^\d+\. /, ""));
-        idx++;
-      }
-      out.push(
-        <ol key={idx} className="my-3 ml-5 space-y-2 list-decimal">
-          {items.map((item, j) => (
-            <li key={j} className="text-gray-300 text-sm leading-relaxed ml-4">
-              {inlineFormat(item)}
-            </li>
-          ))}
-        </ol>
-      );
-      continue;
-    }
-
-    // Blockquote — collect consecutive lines
-    if (line.startsWith("> ")) {
-      const items: string[] = [];
-      while (idx < lines.length && lines[idx].trim().startsWith("> ")) {
-        items.push(lines[idx].trim().slice(2));
-        idx++;
-      }
-      out.push(
-        <blockquote key={idx} className="my-5 border-l-2 border-[#c8a32e] pl-4 py-1 space-y-1">
-          {items.map((item, j) => (
-            <p key={j} className="text-gray-400 italic text-sm leading-relaxed">{inlineFormat(item)}</p>
-          ))}
-        </blockquote>
-      );
-      continue;
-    }
-
-    // Paragraph — collect consecutive plain lines
-    const paraLines: string[] = [];
-    while (
-      idx < lines.length &&
-      lines[idx].trim() &&
-      !/^#{1,3} /.test(lines[idx].trim()) &&
-      !/^[-*] /.test(lines[idx].trim()) &&
-      !/^\d+\. /.test(lines[idx].trim()) &&
-      !lines[idx].trim().startsWith("> ") &&
-      !lines[idx].trim().startsWith("```")
-    ) {
-      paraLines.push(lines[idx].trim());
-      idx++;
-    }
-    out.push(
-      <p key={idx} className="text-gray-300 text-sm leading-[1.8] my-4">
-        {inlineFormat(paraLines.join(" "))}
-      </p>
-    );
-  }
-
-  return out;
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function ArticlePage({ params }: Props) {
@@ -202,7 +63,8 @@ export default async function ArticlePage({ params }: Props) {
 
   return (
     <>
-      <Navbar discordInvite={settings.discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} />
+      <Navbar discordInvite={settings.discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} maintenanceActive={settings.maintenance.active}
+        maintenanceEndAt={settings.maintenance.endAt} />
 
       {/* ── Hero banner ─────────────────────────────────────────────────── */}
       <div className="pt-16 bg-[#080e1a]">

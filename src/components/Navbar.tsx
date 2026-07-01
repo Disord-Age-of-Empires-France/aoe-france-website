@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ChevronDown, Menu, X, LogOut, User } from "lucide-react";
+import { ChevronDown, Menu, X, LogOut, User, CircleUser, Shield, AlertTriangle } from "lucide-react";
 import DiscordIcon from "@/components/DiscordIcon";
 import ThemeToggle from "@/components/ThemeToggle";
+import MaintenanceCountdown from "@/components/maintenance/MaintenanceCountdown";
 import type { UserRole } from "@/lib/session";
 import { GAME_NAV_ITEMS, SECTION_NAV_ITEMS, type GameId, type SectionId } from "@/lib/nav-items";
 
@@ -36,9 +37,11 @@ interface NavbarProps {
   discordInvite?: string;
   session?: { username: string; role: UserRole } | null;
   features?: Features;
+  maintenanceActive?: boolean;
+  maintenanceEndAt?: string | null;
 }
 
-export default function Navbar({ discordInvite = "#discord", session, features }: NavbarProps) {
+export default function Navbar({ discordInvite = "#discord", session, features, maintenanceActive, maintenanceEndAt }: NavbarProps) {
   const navLinks = BASE_NAV_LINKS
     .filter((link) => {
       if (link.gameId && features?.games && !features.games[link.gameId]) return false;
@@ -59,17 +62,45 @@ export default function Navbar({ discordInvite = "#discord", session, features }
         const enabledKeys = features?.navItems?.[sectionId];
         const items = SECTION_NAV_ITEMS[sectionId]
           .filter((item) => !enabledKeys || enabledKeys.includes(item.key))
-          .map((item) => ({ label: item.label, href: `${link.href}/${item.key}` }));
+          .map((item) => ({ label: item.label, href: item.href ?? `${link.href}/${item.key}` }));
         return { ...link, resolvedDropdown: items };
       }
       return link;
     });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function openUserMenu()  {
+    if (userMenuTimer.current) clearTimeout(userMenuTimer.current);
+    setUserMenuOpen(true);
+  }
+  function closeUserMenu() {
+    userMenuTimer.current = setTimeout(() => setUserMenuOpen(false), 50);
+  }
   const pathname = usePathname();
+
+  const isPrivileged = session?.role === "admin" || session?.role === "editor";
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border-site">
+      {maintenanceActive && isPrivileged && (
+        <div className="bg-red-950/80 border-b border-red-900/50 px-4 py-2.5">
+          <div className="max-w-7xl mx-auto flex items-center gap-3">
+            <AlertTriangle size={14} className="text-red-400 shrink-0" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-red-400 text-[12px] font-bold">Le site est actuellement en maintenance</span>
+              <span className="text-red-500/60 text-[11px]">— Seuls les administrateurs peuvent accéder au site.</span>
+              {maintenanceEndAt && (
+                <span className="text-red-500/60 text-[11px] flex items-center gap-1">
+                  Retour dans <MaintenanceCountdown endAt={maintenanceEndAt} compact mode="refresh" />
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-20">
         {/* Logo */}
         <Link href="/" className="flex items-center shrink-0">
@@ -89,7 +120,7 @@ export default function Navbar({ discordInvite = "#discord", session, features }
             const items: { label: string; href: string }[] =
               "resolvedDropdown" in link && link.resolvedDropdown
                 ? link.resolvedDropdown
-                : (link.dropdown ?? []).map((label) => ({
+                : ("dropdown" in link && Array.isArray(link.dropdown) ? link.dropdown as string[] : []).map((label: string) => ({
                     label,
                     href: `${link.href}/${label.toLowerCase().replace(/\s+/g, "-").replace(/[éè]/g, "e").replace(/[àâ]/g, "a")}`,
                   }));
@@ -150,29 +181,61 @@ export default function Navbar({ discordInvite = "#discord", session, features }
         {session ? (
           <div className="hidden lg:flex items-center gap-2 shrink-0">
             <ThemeToggle />
-            {(session.role === "admin" || session.role === "editor") && (
-              <Link
-                href="/admin"
-                className="text-[13px] font-semibold text-muted hover:text-[#c8a32e] tracking-wider px-3 py-3 transition-colors"
-              >
-                BACK OFFICE
-              </Link>
-            )}
-            <div className="flex items-center gap-2 border border-border-site rounded px-3 py-2.5 text-[13px] text-faint">
-              <User size={14} />
-              <span className="font-medium text-muted">{session.username}</span>
-            </div>
-            <a
-              href="/api/auth/logout"
-              className="flex items-center gap-1.5 text-[13px] font-semibold text-faint hover:text-red-400 tracking-wider px-2 py-3 transition-colors"
-              title="Se déconnecter"
+            {/* User dropdown */}
+            <div
+              className="relative"
+              onMouseEnter={openUserMenu}
+              onMouseLeave={closeUserMenu}
             >
-              <LogOut size={16} />
-            </a>
+              <button
+                type="button"
+                className="flex items-center gap-2 border border-border-site hover:border-[#c8a32e]/50 rounded px-3 py-2.5 text-[13px] text-faint hover:text-[#c8a32e] transition-colors"
+              >
+                <User size={14} />
+                <span className="font-medium text-muted">{session.username}</span>
+                <ChevronDown size={12} className={`transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+              {userMenuOpen && (
+                <div className="absolute top-full right-0 mt-1 min-w-[170px] bg-surface border border-border-site shadow-xl rounded z-50">
+                  <Link
+                    href="/profil"
+                    onClick={() => setUserMenuOpen(false)}
+                    className="flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-foreground/70 hover:text-[#c8a32e] hover:bg-surface-2 transition-colors"
+                  >
+                    <CircleUser size={14} />
+                    Mon compte
+                  </Link>
+                  {(session.role === "admin" || session.role === "editor") && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-foreground/70 hover:text-[#c8a32e] hover:bg-surface-2 transition-colors border-t border-border-site"
+                    >
+                      <Shield size={14} />
+                      Back Office
+                    </Link>
+                  )}
+                  <a
+                    href={`/api/auth/logout?returnTo=${encodeURIComponent(pathname)}`}
+                    className="flex items-center gap-2.5 px-4 py-3 text-[13px] font-medium text-foreground/70 hover:text-red-400 hover:bg-surface-2 transition-colors border-t border-border-site"
+                  >
+                    <LogOut size={14} />
+                    Déconnexion
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="hidden lg:flex items-center gap-2 shrink-0">
             <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("open-login"))}
+              className="flex items-center gap-2 border border-border-site hover:border-[#c8a32e]/50 text-muted hover:text-[#c8a32e] text-[13px] font-bold tracking-wider px-5 py-3 rounded transition-colors"
+            >
+              CONNEXION
+            </button>
             <a
               href={discordInvite}
               target="_blank"
@@ -210,10 +273,14 @@ export default function Navbar({ discordInvite = "#discord", session, features }
           ))}
           {session ? (
             <div className="mt-3 space-y-2">
-              <div className="flex items-center gap-2 px-3 py-2 border border-border-site rounded text-sm text-foreground/70">
+              <Link
+                href="/profil"
+                className="flex items-center gap-2 px-3 py-2 border border-border-site hover:border-[#c8a32e]/50 rounded text-sm text-foreground/70 hover:text-[#c8a32e] transition-colors"
+                onClick={() => setMobileOpen(false)}
+              >
                 <User size={14} />
                 <span>{session.username}</span>
-              </div>
+              </Link>
               {(session.role === "admin" || session.role === "editor") && (
                 <Link
                   href="/admin"
@@ -224,7 +291,7 @@ export default function Navbar({ discordInvite = "#discord", session, features }
                 </Link>
               )}
               <a
-                href="/api/auth/logout"
+                href={`/api/auth/logout?returnTo=${encodeURIComponent(pathname)}`}
                 className="flex items-center justify-center gap-2 border border-red-800/40 text-red-400 text-[11px] font-bold tracking-wider px-4 py-3 rounded w-full"
               >
                 <LogOut size={14} />
@@ -233,6 +300,13 @@ export default function Navbar({ discordInvite = "#discord", session, features }
             </div>
           ) : (
             <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => { setMobileOpen(false); window.dispatchEvent(new CustomEvent("open-login")); }}
+                className="flex items-center justify-center gap-2 border border-border-site hover:border-[#c8a32e]/50 text-muted text-[11px] font-bold tracking-wider px-4 py-3 rounded w-full transition-colors"
+              >
+                CONNEXION
+              </button>
               <a
                 href={discordInvite}
                 target="_blank"

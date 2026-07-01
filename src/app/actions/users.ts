@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getSession, type UserRole } from "@/lib/session";
+import { getSession, destroySession, type UserRole } from "@/lib/session";
 import {
   createUser, updateUser, deleteUser, getUser,
   getUserByUsername, countAdminUsers, createLog,
@@ -20,7 +20,7 @@ function parseRole(v: FormDataEntryValue | null): UserRole {
 export async function createUserAction(
   _prev: unknown,
   formData: FormData
-): Promise<{ error: string } | void> {
+): Promise<{ error: string } | undefined> {
   const session = await getSession();
   if (session?.role !== "admin") return { error: "Accès refusé." };
 
@@ -57,7 +57,7 @@ export async function updateUserAction(
   id: string,
   _prev: unknown,
   formData: FormData
-): Promise<{ error: string } | void> {
+): Promise<{ error: string } | undefined> {
   const session = await getSession();
   if (session?.role !== "admin") return { error: "Accès refusé." };
 
@@ -113,7 +113,7 @@ export async function updateUserAction(
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
-export async function deleteUserAction(id: string): Promise<{ error: string } | void> {
+export async function deleteUserAction(id: string): Promise<{ error: string } | undefined> {
   const session = await getSession();
   if (session?.role !== "admin") return { error: "Accès refusé." };
   if (session.userId === id)     return { error: "Vous ne pouvez pas supprimer votre propre compte." };
@@ -137,6 +137,8 @@ export async function deleteUserAction(id: string): Promise<{ error: string } | 
 
 // ─── Profile (self) ───────────────────────────────────────────────────────────
 
+const DISPLAY_NAME_COOLDOWN_DAYS = 120;
+
 export async function updateProfileAction(
   _prev: unknown,
   formData: FormData
@@ -144,21 +146,49 @@ export async function updateProfileAction(
   const session = await getSession();
   if (!session) return { error: "Non authentifié." };
 
-  const displayName = (formData.get("displayName")     as string).trim();
-  const email       = (formData.get("email")           as string).trim();
+  const displayName = (formData.get("displayName") as string).trim();
+  const avatar      = (formData.get("avatar")      as string).trim();
+  const bio         = (formData.get("bio")         as string).slice(0, 280);
+  const location    = (formData.get("location")    as string).trim();
   const currentPw   = (formData.get("currentPassword") as string);
   const newPw       = (formData.get("newPassword")     as string);
   const confirmPw   = (formData.get("confirmPassword") as string);
 
-  const updates: Parameters<typeof updateUser>[1] = { displayName, email };
+  const rawLinks = [0, 1, 2].map((i) => ({
+    type: (formData.get(`socialType${i}`) as string ?? "").trim(),
+    url:  (formData.get(`socialUrl${i}`)  as string ?? "").trim(),
+  })).filter((l) => l.type && l.url);
+  const socialLinks   = JSON.stringify(rawLinks);
+  const profilePublic = formData.get("profile_public") === "1" ? "1" : "0";
+
+  const user = await getUser(session.userId);
+  if (!user) return { error: "Utilisateur introuvable." };
+
+  const updates: Parameters<typeof updateUser>[1] = { displayName, avatar, bio, location, socialLinks, profilePublic };
+
+  // Cooldown on display name changes
+  if (displayName !== user.displayName) {
+    if (user.displayNameChangedAt) {
+      const nextAllowed = new Date(
+        new Date(user.displayNameChangedAt).getTime() + DISPLAY_NAME_COOLDOWN_DAYS * 24 * 60 * 60 * 1000
+      );
+      if (new Date() < nextAllowed) {
+        const formatted = nextAllowed.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+        return { error: `Vous ne pouvez pas changer votre nom affiché avant le ${formatted}.` };
+      }
+    }
+    updates.displayNameChangedAt = new Date().toISOString();
+  }
 
   if (newPw) {
-    if (!currentPw)           return { error: "Le mot de passe actuel est requis." };
-    if (newPw.length < 8)     return { error: "Le nouveau mot de passe doit faire au moins 8 caractères." };
-    if (newPw !== confirmPw)  return { error: "Les nouveaux mots de passe ne correspondent pas." };
-
-    const user = await getUser(session.userId);
-    if (!user || !verifyPassword(currentPw, user.passwordHash)) {
+    if (!currentPw)                       return { error: "Le mot de passe actuel est requis." };
+    if (newPw.length < 12)                return { error: "Le mot de passe doit contenir au moins 12 caractères." };
+    if (!/[A-Z]/.test(newPw))            return { error: "Le mot de passe doit contenir au moins une lettre majuscule." };
+    if (!/[a-z]/.test(newPw))            return { error: "Le mot de passe doit contenir au moins une lettre minuscule." };
+    if (!/[0-9]/.test(newPw))            return { error: "Le mot de passe doit contenir au moins un chiffre." };
+    if (!/[^A-Za-z0-9]/.test(newPw))     return { error: "Le mot de passe doit contenir au moins un caractère spécial." };
+    if (newPw !== confirmPw)              return { error: "Les nouveaux mots de passe ne correspondent pas." };
+    if (!verifyPassword(currentPw, user.passwordHash)) {
       await new Promise((r) => setTimeout(r, 500));
       return { error: "Mot de passe actuel incorrect." };
     }
@@ -166,6 +196,33 @@ export async function updateProfileAction(
   }
 
   await updateUser(session.userId, updates);
+  revalidatePath("/profil");
   revalidatePath("/admin/profil");
   return { success: true };
+}
+
+// ─── Delete own account ───────────────────────────────────────────────────────
+
+export async function deleteOwnAccountAction(): Promise<{ error: string } | undefined> {
+  const session = await getSession();
+  if (!session) return { error: "Non authentifié." };
+
+  const user = await getUser(session.userId);
+  if (!user) return { error: "Compte introuvable." };
+
+  if (user.role === "admin" && (await countAdminUsers()) <= 1) {
+    return { error: "Impossible de supprimer le dernier compte administrateur." };
+  }
+
+  await createLog({
+    userId:   session.userId,
+    username: session.username,
+    role:     session.role,
+    action:   "user.delete_self",
+    target:   session.username,
+    targetId: session.userId,
+  });
+  await deleteUser(session.userId);
+  await destroySession();
+  redirect("/");
 }

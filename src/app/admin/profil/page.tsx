@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/db";
-import { requireBOAccess } from "@/lib/auth-check";
+import { requireSelfAccess } from "@/lib/auth-check";
 import ProfileForm from "@/components/admin/ProfileForm";
 
 export const metadata = { title: "Mon profil" };
 
 export default async function ProfilPage() {
-  const session = await requireBOAccess();
+  const session = await requireSelfAccess();
+  if (session.role === "member") redirect("/profil");
   const user = await getUser(session.userId);
   if (!user) redirect("/admin/login");
 

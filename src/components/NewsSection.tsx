@@ -66,7 +66,7 @@ export default async function NewsSection() {
               <p className="text-faint text-sm">Aucune actualité publiée pour l&apos;instant.</p>
             ) : (
               <div className="space-y-1">
-                {articles.map((article) => {
+                {articles.slice(0, 4).map((article) => {
                   const badgeClass = BADGE_CLASSES[article.badgeColor] ?? BADGE_CLASSES.blue;
                   return (
                     <Link

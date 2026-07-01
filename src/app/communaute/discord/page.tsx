@@ -112,7 +112,8 @@ export default async function DiscordPage() {
 
   return (
     <>
-      <Navbar discordInvite={discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} />
+      <Navbar discordInvite={discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} maintenanceActive={settings.maintenance.active}
+        maintenanceEndAt={settings.maintenance.endAt} />
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="pt-16 bg-background">

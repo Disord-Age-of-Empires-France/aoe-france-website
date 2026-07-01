@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
         hostname: "cdn.akamai.steamstatic.com",
         pathname: "/steam/apps/**",
       },
+      {
+        protocol: "https",
+        hostname: "cdn.discordapp.com",
+      },
     ],
   },
 };

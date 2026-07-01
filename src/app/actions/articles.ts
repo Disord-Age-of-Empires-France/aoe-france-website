@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { createArticle, updateArticle, deleteArticle, updateSettings, getArticle, createLog } from "@/lib/db";
 import { ARTICLE_CATEGORIES, type ArticleStatus } from "@/lib/categories";
@@ -16,25 +16,27 @@ function parseArticleForm(formData: FormData) {
     badgeColor:  firstCat?.color ?? "blue",
     description: (formData.get("description") as string ?? "").trim(),
     content:     (formData.get("content") as string ?? "").trim(),
-    date:        (formData.get("date") as string) ?? "",
+    date:        new Date().toISOString(),
     status:      ((formData.get("status") as string) ?? "draft") as ArticleStatus,
     thumbnail:   (formData.get("thumbnail") as string ?? "").trim(),
+    scheduledAt: (formData.get("scheduledAt") as string ?? "").trim() || null,
   };
 }
 
 export async function createArticleAction(
   _prev: unknown,
   formData: FormData
-): Promise<{ error: string } | void> {
+): Promise<{ error: string } | undefined> {
   const session = await getSession();
   const data = parseArticleForm(formData);
   if (!data.title) return { error: "Le titre est requis." };
-  const article = await createArticle(data);
+  const article = await createArticle({ ...data, createdBy: session?.username ?? null });
+  const logAction = data.status === "draft" && data.scheduledAt ? "article.schedule" : "article.create";
   await createLog({
     userId:   session?.userId ?? null,
     username: session?.username ?? "inconnu",
     role:     session?.role ?? "",
-    action:   "article.create",
+    action:   logAction,
     target:   data.title,
     targetId: article.id,
   });
@@ -47,7 +49,7 @@ export async function updateArticleAction(
   id: string,
   _prev: unknown,
   formData: FormData
-): Promise<{ error: string } | void> {
+): Promise<{ error: string } | undefined> {
   const session = await getSession();
   const data = parseArticleForm(formData);
   if (!data.title) return { error: "Le titre est requis." };
@@ -59,6 +61,8 @@ export async function updateArticleAction(
     if      (data.status === "published") action = "article.publish";
     else if (data.status === "archived")  action = "article.archive";
     else                                  action = "article.unpublish";
+  } else if (data.status === "draft" && data.scheduledAt && !current?.scheduledAt) {
+    action = "article.schedule";
   }
 
   await createLog({
@@ -74,7 +78,7 @@ export async function updateArticleAction(
   redirect("/admin/actualites");
 }
 
-export async function deleteArticleAction(id: string): Promise<{ error: string } | void> {
+export async function deleteArticleAction(id: string): Promise<{ error: string } | undefined> {
   const session = await getSession();
   if (session?.role !== "admin") {
     return { error: "Seuls les administrateurs peuvent supprimer des articles." };
@@ -97,9 +101,11 @@ export async function updateSettingsAction(
   _prev: unknown,
   formData: FormData
 ): Promise<{ success: boolean; error?: string }> {
-  const session       = await getSession();
-  const discordInvite = (formData.get("discordInvite") as string ?? "").trim();
-  const siteName      = (formData.get("siteName") as string ?? "").trim();
+  const session             = await getSession();
+  const discordInvite       = (formData.get("discordInvite") as string ?? "").trim();
+  const siteName            = (formData.get("siteName") as string ?? "").trim();
+  const maintenance_message = (formData.get("maintenance_message") as string ?? "").trim();
+  const maintenance_end     = (formData.get("maintenance_end")     as string ?? "").trim();
 
   if (!discordInvite) return { success: false, error: "Le lien Discord est requis." };
   if (!siteName)      return { success: false, error: "Le nom du site est requis." };
@@ -107,6 +113,9 @@ export async function updateSettingsAction(
   await updateSettings({
     discordInvite,
     siteName,
+    maintenance_mode:    formData.get("maintenance_mode") === "1",
+    maintenance_message,
+    maintenance_end,
     feature_news:       formData.get("feature_news")       === "1",
     feature_guides:     formData.get("feature_guides")     === "1",
     feature_community:  formData.get("feature_community")  === "1",
@@ -128,6 +137,7 @@ export async function updateSettingsAction(
     role:     session?.role ?? "",
     action:   "settings.update",
   });
+  revalidateTag("maintenance", { expire: 0 });
   revalidatePath("/");
   return { success: true };
 }

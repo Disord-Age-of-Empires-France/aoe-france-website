@@ -29,3 +29,13 @@ export async function requireAdminAccess(): Promise<BOSession> {
   if (session.role !== "admin") redirect("/admin");
   return session;
 }
+
+// Accessible à tout utilisateur connecté, quel que soit son rôle.
+export async function requireSelfAccess(): Promise<BOSession> {
+  const session = await getSession();
+  if (!session) redirect("/admin/login");
+  const user = await getUser(session.userId);
+  if (!user) redirect("/force-logout");
+  if (user.role !== session.role) redirect("/session-refresh");
+  return session;
+}

@@ -7,8 +7,7 @@ import { requireBOAccess } from "@/lib/auth-check";
 export const metadata = { title: "Nouvel article" };
 
 export default async function NouvelArticlePage() {
-  const session = await requireBOAccess();
-  const canEditDate = session.role === "admin";
+  await requireBOAccess();
 
   return (
     <div className="space-y-6">
@@ -24,7 +23,7 @@ export default async function NouvelArticlePage() {
       </div>
 
       <div className="bg-surface border border-border-site rounded-lg p-6">
-        <ArticleForm action={createArticleAction} mode="create" canEditDate={canEditDate} />
+        <ArticleForm action={createArticleAction} mode="create" />
       </div>
     </div>
   );

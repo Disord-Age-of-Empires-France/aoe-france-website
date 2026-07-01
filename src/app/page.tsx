@@ -17,7 +17,8 @@ export default async function Home() {
   }
   return (
     <>
-      <Navbar discordInvite={settings.discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} />
+      <Navbar discordInvite={settings.discordInvite} session={session} features={{ ...settings.features, navItems: settings.navItems }} maintenanceActive={settings.maintenance.active}
+        maintenanceEndAt={settings.maintenance.endAt} />
       <main className="flex-1">
         <Hero />
         <GameSection games={settings.features.games} />
