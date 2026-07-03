@@ -1,6 +1,6 @@
 {
   "name": "aoe-france-website",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,12 +10,16 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
     "@types/dompurify": "^3.0.5",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
     "lucide-react": "^1.17.0",
     "marked": "^18.0.5",
     "next": "^16.2.9",
+    "otpauth": "^9.5.1",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "sanitize-html": "^2.17.5"
@@ -23,6 +27,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/sanitize-html": "^2.16.1",

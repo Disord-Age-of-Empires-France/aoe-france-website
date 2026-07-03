@@ -6,6 +6,8 @@ import { getPublishedArticles, getSettings } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { gateFeature } from "@/lib/public-access";
 import { ARTICLE_CATEGORIES } from "@/lib/categories";
+import ActualitesFilters from "@/components/ActualitesFilters";
+import ShareButton from "@/components/ShareButton";
 
 export const metadata = { title: "Actualités — Age of Empires France" };
 
@@ -32,21 +34,6 @@ function formatDate(iso: string): string {
     }).format(new Date(iso.length === 10 ? iso + "T12:00:00" : iso));
   } catch { return iso; }
 }
-
-function buildUrl(params: { jeu?: string; type?: string }): string {
-  const search = new URLSearchParams();
-  if (params.jeu)  search.set("jeu",  params.jeu);
-  if (params.type) search.set("type", params.type);
-  const qs = search.toString();
-  return `/actualites${qs ? `?${qs}` : ""}`;
-}
-
-const FILTER_BTN = (active: boolean) =>
-  `shrink-0 px-4 py-1.5 rounded text-[11px] font-bold tracking-wider border transition-colors ${
-    active
-      ? "bg-[#c8a32e] text-[#080e1a] border-[#c8a32e]"
-      : "border-border-site text-muted hover:border-[#c8a32e]/50 hover:text-[#c8a32e]"
-  }`;
 
 interface Props {
   searchParams: Promise<{ jeu?: string; type?: string }>;
@@ -93,37 +80,12 @@ export default async function ActualitesPage({ searchParams }: Props) {
       <main className="flex-1 bg-background">
         <div className="max-w-7xl mx-auto px-4 py-10">
 
-          {/* Category filters */}
-          <div className="space-y-2 mb-10">
-            {/* Jeu */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              <span className="shrink-0 text-[10px] font-bold tracking-widest text-faint uppercase w-10">JEU</span>
-              <Link href={buildUrl({ type })} className={FILTER_BTN(!jeu)}>TOUS</Link>
-              {gameCategories.map((cat) => (
-                <Link
-                  key={cat.value}
-                  href={buildUrl({ jeu: jeu === cat.value ? undefined : cat.value, type })}
-                  className={FILTER_BTN(jeu === cat.value)}
-                >
-                  {cat.label}
-                </Link>
-              ))}
-            </div>
-            {/* Type */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              <span className="shrink-0 text-[10px] font-bold tracking-widest text-faint uppercase w-10">TYPE</span>
-              <Link href={buildUrl({ jeu })} className={FILTER_BTN(!type)}>TOUS</Link>
-              {tagCategories.map((cat) => (
-                <Link
-                  key={cat.value}
-                  href={buildUrl({ jeu, type: type === cat.value ? undefined : cat.value })}
-                  className={FILTER_BTN(type === cat.value)}
-                >
-                  {cat.label}
-                </Link>
-              ))}
-            </div>
-          </div>
+          <ActualitesFilters
+            jeu={jeu}
+            type={type}
+            gameCategories={gameCategories}
+            tagCategories={tagCategories}
+          />
 
           {filtered.length === 0 ? (
             <div className="text-center py-24 text-faint">
@@ -137,6 +99,7 @@ export default async function ActualitesPage({ searchParams }: Props) {
 
               {/* Featured article */}
               {featured && (
+                <div className="relative">
                 <Link
                   href={`/actualites/${featured.id}`}
                   className={`group block rounded-lg overflow-hidden border border-border-site ${BORDER_ACCENT[featured.badgeColor] ?? "hover:border-[#c8a32e]/40"} transition-all`}
@@ -189,14 +152,18 @@ export default async function ActualitesPage({ searchParams }: Props) {
                     </div>
                   </div>
                 </Link>
+                <div className="absolute top-3 right-3 z-10">
+                  <ShareButton path={`/actualites/${featured.id}`} title={featured.title} compact />
+                </div>
+                </div>
               )}
 
               {/* Article grid */}
               {rest.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {rest.map((article) => (
+                    <div key={article.id} className="relative">
                     <Link
-                      key={article.id}
                       href={`/actualites/${article.id}`}
                       className={`group flex flex-col rounded-lg overflow-hidden border border-border-site ${BORDER_ACCENT[article.badgeColor] ?? "hover:border-[#c8a32e]/40"} bg-surface transition-all hover:bg-surface-2`}
                     >
@@ -243,6 +210,10 @@ export default async function ActualitesPage({ searchParams }: Props) {
                         </div>
                       </div>
                     </Link>
+                    <div className="absolute top-3 right-3 z-10">
+                      <ShareButton path={`/actualites/${article.id}`} title={article.title} compact />
+                    </div>
+                    </div>
                   ))}
                 </div>
               )}

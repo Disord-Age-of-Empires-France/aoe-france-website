@@ -11,6 +11,8 @@ import ReactionBar from "@/components/forum/ReactionBar";
 import ReportButton from "@/components/forum/ReportButton";
 import ReplyForm from "@/components/forum/ReplyForm";
 import { TopicModBar, DeleteReplyButton } from "@/components/forum/ModActions";
+import ReplyButton from "@/components/forum/ReplyButton";
+import ShareButton from "@/components/ShareButton";
 
 interface Props {
   params:      Promise<{ slug: string; topicId: string }>;
@@ -27,18 +29,6 @@ function timeAgo(iso: string): string {
   const d = Math.floor(h / 24);
   if (d < 30) return `Il y a ${d}j`;
   return `Il y a ${Math.floor(d / 30)} mois`;
-}
-
-function RoleBadge({ role }: { role: string }) {
-  const cls =
-    role === "admin"  ? "bg-amber-800/60 text-amber-300" :
-    role === "editor" ? "bg-blue-800/60 text-blue-300"   : null;
-  if (!cls) return null;
-  return (
-    <span className={`text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded uppercase ${cls}`}>
-      {role === "admin" ? "Admin" : "Éditeur"}
-    </span>
-  );
 }
 
 function Avatar({ name, src, size = "md" }: { name: string; src?: string; size?: "sm" | "md" }) {
@@ -148,24 +138,26 @@ export default async function TopicPage({ params, searchParams }: Props) {
             </div>
           </div>
 
-          <TopicModBar
-            topicId={topicId}
-            pinned={topic.pinned}
-            locked={topic.locked}
-            canMod={isMod}
-            canDelete={isMod || session?.userId === topic.userId}
-          />
+          <div className="flex items-center gap-2 shrink-0">
+            <ShareButton path={`/forum/${slug}/${topicId}`} title={topic.title} />
+            <TopicModBar
+              topicId={topicId}
+              pinned={topic.pinned}
+              locked={topic.locked}
+              canMod={isMod}
+              canDelete={isMod || (session?.userId === topic.userId && !topic.locked)}
+            />
+          </div>
         </div>
 
         {/* ── Post original ── */}
         <div className="bg-surface border border-border-site rounded-xl overflow-hidden mb-6">
           <div className="flex items-start gap-4 p-5">
             {/* Auteur */}
-            <div className="flex flex-col items-center gap-1.5 w-16 shrink-0">
+            <Link href={`/profil/${topic.username}`} className="flex flex-col items-center gap-1.5 w-16 shrink-0 group">
               <Avatar name={topic.displayName} src={topic.avatar || undefined} />
-              <span className="text-[11px] font-semibold text-muted text-center leading-tight">{topic.displayName}</span>
-              <RoleBadge role={topic.role} />
-            </div>
+              <span className="text-[11px] font-semibold text-muted text-center leading-tight group-hover:text-[#c8a32e] transition-colors">{topic.displayName}</span>
+            </Link>
 
             {/* Contenu */}
             <div className="flex-1 min-w-0">
@@ -187,6 +179,7 @@ export default async function TopicPage({ params, searchParams }: Props) {
             <div className="flex items-center gap-3 text-faint text-xs">
               <span>{timeAgo(topic.createdAt)}</span>
               <ReportButton targetId={topicId} targetType="topic" currentUserId={session?.userId} />
+              {session && !topic.locked && <ReplyButton username={topic.username} />}
             </div>
           </div>
         </div>
@@ -204,11 +197,10 @@ export default async function TopicPage({ params, searchParams }: Props) {
               return (
                 <div key={reply.id} className="bg-surface border border-border-site rounded-xl overflow-hidden">
                   <div className="flex items-start gap-4 p-5">
-                    <div className="flex flex-col items-center gap-1.5 w-16 shrink-0">
+                    <Link href={`/profil/${reply.username}`} className="flex flex-col items-center gap-1.5 w-16 shrink-0 group">
                       <Avatar name={reply.displayName} src={reply.avatar || undefined} />
-                      <span className="text-[11px] font-semibold text-muted text-center leading-tight">{reply.displayName}</span>
-                      <RoleBadge role={reply.role} />
-                    </div>
+                      <span className="text-[11px] font-semibold text-muted text-center leading-tight group-hover:text-[#c8a32e] transition-colors">{reply.displayName}</span>
+                    </Link>
                     <div className="flex-1 min-w-0">
                       <div
                         className="prose-forum text-sm text-muted leading-relaxed"
@@ -227,6 +219,7 @@ export default async function TopicPage({ params, searchParams }: Props) {
                     <div className="flex items-center gap-3 text-xs text-faint">
                       <span>{timeAgo(reply.createdAt)}</span>
                       <ReportButton targetId={reply.id} targetType="reply" currentUserId={session?.userId} />
+                      {session && !topic.locked && <ReplyButton username={reply.username} />}
                       {canDeleteReply && <DeleteReplyButton replyId={reply.id} />}
                     </div>
                   </div>

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pin, Lock, MessageSquare, Eye, Clock, Plus } from "lucide-react";
-import { getForumCategory, getForumTopics } from "@/lib/db";
+import { Pin, Lock, MessageSquare, Eye, Clock, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { getForumCategory, getForumTopics, getForumCategories } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import BackButton from "@/components/forum/BackButton";
+import ForumFilters from "@/components/forum/ForumFilters";
+import ForumCategoryFilters from "@/components/forum/ForumCategoryFilters";
 
-interface Props { params: Promise<{ slug: string }>; searchParams: Promise<{ page?: string; submitted?: string }> }
+interface Props { params: Promise<{ slug: string }>; searchParams: Promise<{ page?: string; submitted?: string; statut?: string }> }
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -27,20 +29,28 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function CategoryPage({ params, searchParams }: Props) {
   const { slug } = await params;
-  const { page: pageStr, submitted } = await searchParams;
+  const { page: pageStr, submitted, statut } = await searchParams;
   const page = Math.max(1, parseInt(pageStr ?? "1", 10));
 
-  const [category, session] = await Promise.all([
+  const [category, session, allCategories] = await Promise.all([
     getForumCategory(slug),
     getSession(),
+    getForumCategories(),
   ]);
   if (!category) notFound();
 
   const { topics, total } = await getForumTopics(category.id, page, 20);
   const totalPages = Math.ceil(total / 20);
 
-  const pinned  = topics.filter((t) => t.pinned);
-  const regular = topics.filter((t) => !t.pinned);
+  const filtered = topics.filter((t) => {
+    if (statut === "épinglés")    return t.pinned;
+    if (statut === "verrouillés") return t.locked;
+    if (statut === "ouverts")     return !t.locked;
+    return true;
+  });
+
+  const pinned  = filtered.filter((t) => t.pinned);
+  const regular = filtered.filter((t) => !t.pinned);
 
   return (
     <div>
@@ -89,15 +99,21 @@ export default async function CategoryPage({ params, searchParams }: Props) {
           )}
         </div>
 
+        <ForumCategoryFilters
+          items={allCategories.map(c => ({ slug: c.slug, name: c.name, icon: c.icon, href: `/forum/${c.slug}` }))}
+          allHref="/forum"
+          active={slug}
+        />
+
+        <ForumFilters slug={slug} statut={statut} />
+
         {/* Liste des sujets */}
-        {topics.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="text-center py-20 text-faint text-sm">
-            Aucun sujet dans cette catégorie.{" "}
-            {session && (
-              <Link href={`/forum/${slug}/nouveau`} className="text-[#c8a32e] hover:underline">
-                Soyez le premier à poster !
-              </Link>
-            )}
+            {statut
+              ? <>Aucun sujet pour ce filtre. <Link href={`/forum/${slug}`} className="text-[#c8a32e] hover:underline">Voir tous les sujets →</Link></>
+              : <>Aucun sujet dans cette catégorie.{" "}{session && <Link href={`/forum/${slug}/nouveau`} className="text-[#c8a32e] hover:underline">Soyez le premier à poster !</Link>}</>
+            }
           </div>
         ) : (
           <div className="space-y-2">
@@ -123,7 +139,16 @@ export default async function CategoryPage({ params, searchParams }: Props) {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 mt-8">
+          <div className="flex items-center justify-center gap-1.5 mt-8 flex-wrap">
+            {page > 1 && (
+              <Link
+                href={`/forum/${slug}?page=${page - 1}`}
+                className="flex items-center gap-1 px-3 h-8 rounded border border-border-site text-muted text-sm hover:text-foreground hover:border-[#c8a32e]/30 transition-colors"
+              >
+                <ChevronLeft size={14} />
+                <span className="hidden sm:inline">Précédent</span>
+              </Link>
+            )}
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
               <Link
                 key={p}
@@ -137,6 +162,15 @@ export default async function CategoryPage({ params, searchParams }: Props) {
                 {p}
               </Link>
             ))}
+            {page < totalPages && (
+              <Link
+                href={`/forum/${slug}?page=${page + 1}`}
+                className="flex items-center gap-1 px-3 h-8 rounded border border-border-site text-muted text-sm hover:text-foreground hover:border-[#c8a32e]/30 transition-colors"
+              >
+                <span className="hidden sm:inline">Suivant</span>
+                <ChevronRight size={14} />
+              </Link>
+            )}
           </div>
         )}
     </div>

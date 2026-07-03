@@ -25,7 +25,7 @@ export default function ReplyForm({ topicId, locked }: Props) {
   }
 
   return (
-    <div className="mt-8">
+    <div id="reply-form" className="mt-8">
       <h2 className="text-base font-bold text-foreground mb-4">Répondre</h2>
       <form action={action} className="space-y-3">
         <input type="hidden" name="topicId" value={topicId} />

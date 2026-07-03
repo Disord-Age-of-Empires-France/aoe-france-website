@@ -3,6 +3,7 @@ import { MessageSquare, Users, Clock, Pin } from "lucide-react";
 import { getForumCategories } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import LoginButton from "@/components/LoginButton";
+import ForumCategoryFilters from "@/components/forum/ForumCategoryFilters";
 
 export const metadata = { title: "Forum — Age of Empires France" };
 
@@ -27,14 +28,23 @@ const COLOR_MAP: Record<string, string> = {
   slate:  "bg-slate-500/15 text-slate-400",
 };
 
-export default async function ForumPage() {
-  const [categories, session] = await Promise.all([
+export default async function ForumPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ section?: string }>;
+}) {
+  const { section } = await searchParams;
+  const [allCategories, session] = await Promise.all([
     getForumCategories(),
     getSession(),
   ]);
 
-  const totalTopics  = categories.reduce((sum, c) => sum + c.topicCount, 0);
-  const totalReplies = categories.reduce((sum, c) => sum + c.replyCount, 0);
+  const categories = section
+    ? allCategories.filter(c => c.slug === section)
+    : allCategories;
+
+  const totalTopics  = allCategories.reduce((sum, c) => sum + c.topicCount, 0);
+  const totalReplies = allCategories.reduce((sum, c) => sum + c.replyCount, 0);
 
   return (
     <div>
@@ -50,7 +60,7 @@ export default async function ForumPage() {
         {/* Stats globales */}
         <div className="grid grid-cols-3 gap-3 mb-8">
           {[
-            { label: "Catégories", value: categories.length, icon: MessageSquare },
+            { label: "Catégories", value: allCategories.length, icon: MessageSquare },
             { label: "Sujets",     value: totalTopics,        icon: Pin           },
             { label: "Réponses",   value: totalReplies,       icon: Users         },
           ].map(({ label, value, icon: Icon }) => (
@@ -63,6 +73,12 @@ export default async function ForumPage() {
             </div>
           ))}
         </div>
+
+        <ForumCategoryFilters
+          items={allCategories.map(c => ({ slug: c.slug, name: c.name, icon: c.icon, href: `/forum?section=${c.slug}` }))}
+          allHref="/forum"
+          active={section}
+        />
 
         {/* Catégories */}
         <div className="space-y-3">

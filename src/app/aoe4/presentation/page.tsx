@@ -4,6 +4,7 @@ import { Calendar, ChevronRight, Sword, Globe, Users, Trophy, BookOpen, Star } f
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { getPublishedArticles, getSettings } from "@/lib/db";
+import BuyWidget from "@/components/BuyWidget";
 import { getSession } from "@/lib/session";
 import { gateFeature } from "@/lib/public-access";
 import type { Article } from "@/lib/db";
@@ -220,7 +221,7 @@ export default async function Aoe4PresentationPage() {
             <div className="w-10 h-0.5 bg-blue-500 mb-8" />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-4 text-muted leading-relaxed">
+              <div className="lg:col-span-2 flex flex-col gap-4 text-muted leading-relaxed">
                 <p>
                   Age of Empires IV est un jeu de stratégie en temps réel qui vous transporte au cœur
                   du Moyen Âge, couvrant plus de <strong className="text-foreground">500 ans d&apos;histoire</strong> entre
@@ -241,6 +242,9 @@ export default async function Aoe4PresentationPage() {
                   des experts qui contextualisent chaque bataille. Une approche unique qui rend
                   l&apos;apprentissage de l&apos;histoire aussi captivant que le jeu lui-même.
                 </p>
+                <div className="mt-auto">
+                  <BuyWidget game="aoe4" steamAppId={settings.steamAppIds.aoe4} promoText={settings.promoTexts.aoe4} compact />
+                </div>
               </div>
 
               <div className="space-y-3">

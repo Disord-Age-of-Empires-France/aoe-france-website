@@ -55,6 +55,8 @@ const SOCIAL_TYPE_OPTIONS: SelectItem[] = [
 ];
 import { updateProfileAction } from "@/app/actions/users";
 import type { User } from "@/lib/db";
+import SteamSection from "./SteamSection";
+import XboxSection  from "./XboxSection";
 
 interface Props {
   user: User;
@@ -243,13 +245,6 @@ export default function ProfileForm({ user }: Props) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold tracking-wider text-muted uppercase">Rôle</label>
-                <div className="px-4 py-3 bg-surface-3 border border-border-site rounded text-sm text-faint">
-                  {user.role === "admin" ? "Administrateur" : user.role === "editor" ? "Éditeur" : "Membre"}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
                 <label className="block text-xs font-semibold tracking-wider text-muted uppercase">Nom affiché</label>
                 <input
                   name="displayName"
@@ -270,14 +265,6 @@ export default function ProfileForm({ user }: Props) {
                     Dernier changement le {new Date(user.displayNameChangedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                   </p>
                 ) : null}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold tracking-wider text-muted uppercase">Email</label>
-                <div className="px-4 py-3 bg-surface-3 border border-border-site rounded text-sm text-faint">
-                  {user.email || <span className="italic">Non renseigné</span>}
-                  <span className="ml-2 text-[11px]">(non modifiable)</span>
-                </div>
               </div>
 
               <div className="space-y-1.5">
@@ -340,6 +327,23 @@ export default function ProfileForm({ user }: Props) {
               ))}
             </div>
           </div>
+
+          {/* Comptes liés */}
+          <div className="border-t border-border-site pt-6">
+            <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-3">Comptes liés</p>
+            <div className="space-y-2">
+              <SteamSection
+                steamId={user.steamId}
+                steamUsername={user.steamUsername}
+                steamAvatar={user.steamAvatar}
+              />
+              <XboxSection
+                xboxId={user.xboxId}
+                xboxGamertag={user.xboxGamertag}
+                xboxAvatar={user.xboxAvatar}
+              />
+            </div>
+          </div>
         </div>
 
         {/* ── Onglet Confidentialité ──────────────────────────────────────── */}
@@ -399,7 +403,19 @@ export default function ProfileForm({ user }: Props) {
 
         {/* ── Onglet Sécurité ─────────────────────────────────────────────── */}
         <div className={activeTab === "securite" ? "p-6 space-y-5" : "hidden"}>
+          {/* Email */}
           <div>
+            <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-4">Identité</p>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold tracking-wider text-muted uppercase">Email</label>
+              <div className="px-4 py-3 bg-surface-3 border border-border-site rounded text-sm text-faint">
+                {user.email || <span className="italic">Non renseigné</span>}
+                <span className="ml-2 text-[11px]">(non modifiable)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-border-site pt-5">
             <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-1">Mot de passe</p>
             <p className="text-xs text-faint mb-5">Saisissez d&apos;abord votre mot de passe actuel pour en définir un nouveau.</p>
           </div>
@@ -507,12 +523,6 @@ export default function ProfileForm({ user }: Props) {
 
 // ─── Constantes pour la modale ────────────────────────────────────────────────
 
-const ROLE_BADGE: Record<string, { label: string; cls: string }> = {
-  admin:  { label: "Administrateur", cls: "text-amber-400 bg-amber-900/20 border-amber-800/40" },
-  editor: { label: "Éditeur",         cls: "text-blue-400  bg-blue-900/20  border-blue-800/40"  },
-  member: { label: "Membre",          cls: "text-faint     bg-surface-2    border-border-site"   },
-};
-
 const SOCIAL_LABEL: Record<string, string> = {
   twitch: "Twitch", youtube: "YouTube", twitter: "Twitter / X",
   discord: "Discord", steam: "Steam", tiktok: "TikTok",
@@ -533,7 +543,6 @@ interface PreviewProps {
 }
 
 function ProfilePreviewModal({ user, displayName, avatar, bio, location, socialLinks, profilePublic, onClose }: PreviewProps) {
-  const badge    = ROLE_BADGE[user.role] ?? ROLE_BADGE.member;
   const initials = (displayName || user.username).slice(0, 2).toUpperCase();
   const joinDate = new Date(user.createdAt).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
@@ -574,9 +583,6 @@ function ProfilePreviewModal({ user, displayName, avatar, bio, location, socialL
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className="text-base font-black tracking-tight text-foreground">
                   {displayName || user.username}
-                </span>
-                <span className={`text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border ${badge.cls}`}>
-                  {badge.label}
                 </span>
                 {!profilePublic && (
                   <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded border text-faint bg-surface border-border-site flex items-center gap-1">
@@ -632,7 +638,51 @@ function ProfilePreviewModal({ user, displayName, avatar, bio, location, socialL
                 </div>
               )}
 
-              {!bio && !location && socialLinks.filter(l => l.type && l.url).length === 0 && (
+              {(user.steamId || user.xboxId) && (
+                <div className="bg-surface-2 border border-border-site rounded-xl p-5">
+                  <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-3">Comptes liés</p>
+                  <div className="space-y-3">
+                    {user.steamId && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-md bg-[#1b2838] flex items-center justify-center shrink-0">
+                          <svg viewBox="0 0 32 32" className="w-3.5 h-3.5" fill="white" aria-hidden>
+                            <path d="M16 2C8.3 2 2 8.3 2 16c0 6.6 4.3 12.2 10.2 14.2l3.7-8.6a4.1 4.1 0 1 1 5-5.3l8.8-3.6C28.5 5.9 22.7 2 16 2z"/>
+                            <circle cx="20.3" cy="11.7" r="3"/>
+                            <circle cx="11.6" cy="20.4" r="2.8"/>
+                          </svg>
+                        </div>
+                        {user.steamAvatar && <img src={user.steamAvatar} alt={user.steamUsername} className="w-7 h-7 rounded-full border border-border-site" />}
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{user.steamUsername}</p>
+                          <a href={`https://steamcommunity.com/profiles/${user.steamId}`} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] text-faint hover:text-[#c8a32e] transition-colors flex items-center gap-1">
+                            <Globe size={10} /> Voir le profil Steam
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    {user.xboxId && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-md bg-[#107c10] flex items-center justify-center shrink-0">
+                          <svg viewBox="0 0 32 32" className="w-3.5 h-3.5" fill="white" aria-hidden>
+                            <path d="M16 2C8.3 2 2 8.3 2 16s6.3 14 14 14 14-6.3 14-14S23.7 2 16 2zm-4.5 4.8c1.3.3 3.5 1.8 4.5 2.8 1-1 3.2-2.5 4.5-2.8 2.7 1.6 4.5 4.5 4.8 7.8-1.2 2.1-4.8 6.5-9.3 8.8-4.5-2.3-8.1-6.7-9.3-8.8.3-3.3 2.1-6.2 4.8-7.8z"/>
+                          </svg>
+                        </div>
+                        {user.xboxAvatar && <img src={user.xboxAvatar} alt={user.xboxGamertag} className="w-7 h-7 rounded-full border border-border-site" />}
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{user.xboxGamertag}</p>
+                          <a href={`https://www.xbox.com/fr-FR/play/user/${encodeURIComponent(user.xboxGamertag)}`} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] text-faint hover:text-[#c8a32e] transition-colors flex items-center gap-1">
+                            <Globe size={10} /> Voir le profil Xbox
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!bio && !location && socialLinks.filter(l => l.type && l.url).length === 0 && !user.steamId && !user.xboxId && (
                 <div className="bg-surface-2 border border-border-site rounded-xl p-8 text-center">
                   <p className="text-faint text-sm">Aucune information renseignée.</p>
                 </div>

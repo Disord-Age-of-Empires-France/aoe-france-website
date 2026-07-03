@@ -9,7 +9,8 @@ import {
   toggleForumTopicPin, toggleForumTopicLock, getForumTopic, getForumReply,
   toggleForumReaction, createForumReport, resolveForumReport,
   createForumCategory, updateForumCategory, deleteForumCategory,
-  getForumCategory, approveForumTopic, rejectForumTopic,
+  getForumCategory, approveForumTopic, rejectForumTopic, getForumReport,
+  createLog, createNotification, getUserByUsername,
 } from "@/lib/db";
 
 async function requireAuth() {
@@ -76,6 +77,37 @@ export async function createReplyAction(
 
   await createForumReply({ id: randomUUID(), topicId, userId: session.userId, content });
   revalidatePath(`/forum/${topic.categorySlug}/${topicId}`);
+
+  const link = `/forum/${topic.categorySlug}/${topicId}`;
+
+  // Notifier l'auteur du sujet (si ce n'est pas lui qui répond)
+  if (session.userId !== topic.userId) {
+    await createNotification({
+      userId:  topic.userId,
+      type:    "topic_reply",
+      title:   "Nouvelle réponse à votre sujet",
+      message: `${session.username} a répondu à "${topic.title}"`,
+      link,
+    });
+  }
+
+  // Notifier les utilisateurs @mentionnés
+  const rawMentions = content.match(/\B@(\w+)/g) ?? [];
+  const mentionedUsernames = [...new Set(rawMentions.map((m: string) => m.slice(1)))];
+  for (const uname of mentionedUsernames) {
+    if (uname === session.username) continue;
+    const mentioned = await getUserByUsername(uname);
+    if (!mentioned) continue;
+    if (mentioned.id === topic.userId) continue; // déjà notifié ci-dessus
+    await createNotification({
+      userId:  mentioned.id,
+      type:    "mention",
+      title:   `${session.username} vous a mentionné`,
+      message: `Dans "${topic.title}"`,
+      link,
+    });
+  }
+
   return {};
 }
 
@@ -92,6 +124,25 @@ export async function deleteTopicAction(topicId: string, reason: string): Promis
 
   const slug = topic.categorySlug;
   await deleteForumTopic(topicId, reason);
+  await createLog({
+    userId:   session.userId,
+    username: session.username,
+    role:     session.role,
+    action:   "forum.topic_delete",
+    target:   topic.title,
+    targetId: topicId,
+    meta:     { author: topic.displayName, category: topic.categoryName, ...(reason ? { reason } : {}) },
+  });
+  // Notifier le créateur si c'est un mod/admin qui désactive (pas le créateur lui-même)
+  if (isMod && session.userId !== topic.userId) {
+    await createNotification({
+      userId:  topic.userId,
+      type:    "topic_deleted",
+      title:   "Votre sujet a été désactivé",
+      message: `"${topic.title}"${reason ? ` — Raison : ${reason}` : ""}`,
+      link:    `/forum/${slug}`,
+    });
+  }
   revalidatePath(`/forum/${slug}`);
   redirect(`/forum/${slug}`);
 }
@@ -103,12 +154,25 @@ export async function deleteReplyAction(replyId: string): Promise<{ error?: stri
   const reply = await getForumReply(replyId);
   if (!reply) return { error: "Réponse introuvable." };
 
-  const canDelete = session.role === "admin" || session.role === "editor" || session.userId === reply.userId;
+  const isMod = session.role === "admin" || session.role === "editor";
+  const canDelete = isMod || session.userId === reply.userId;
   if (!canDelete) return { error: "Accès refusé." };
 
   await deleteForumReply(replyId);
   const topic = await getForumTopic(reply.topicId);
   if (topic) revalidatePath(`/forum/${topic.categorySlug}/${reply.topicId}`);
+
+  // Notifier l'auteur de la réponse si c'est un mod qui supprime
+  if (isMod && session.userId !== reply.userId) {
+    await createNotification({
+      userId:  reply.userId,
+      type:    "reply_deleted",
+      title:   "Votre commentaire a été supprimé",
+      message: topic ? `Dans le sujet "${topic.title}"` : undefined,
+      link:    topic ? `/forum/${topic.categorySlug}/${reply.topicId}` : undefined,
+    });
+  }
+
   return {};
 }
 
@@ -125,10 +189,20 @@ export async function togglePinAction(topicId: string): Promise<{ error?: string
 }
 
 export async function toggleLockAction(topicId: string): Promise<{ error?: string }> {
-  await requireMod().catch(() => null);
+  const session = await requireMod().catch(() => null);
   const topic = await getForumTopic(topicId);
   if (!topic) return { error: "Sujet introuvable." };
   await toggleForumTopicLock(topicId);
+  // Notifier le créateur uniquement lors du verrouillage (pas du déverrouillage)
+  if (!topic.locked && session && session.userId !== topic.userId) {
+    await createNotification({
+      userId:  topic.userId,
+      type:    "topic_locked",
+      title:   "Votre sujet a été verrouillé",
+      message: `"${topic.title}" ne peut plus recevoir de nouvelles réponses.`,
+      link:    `/forum/${topic.categorySlug}/${topicId}`,
+    });
+  }
   revalidatePath(`/forum/${topic.categorySlug}/${topicId}`);
   return {};
 }
@@ -144,7 +218,44 @@ export async function toggleReactionAction(
   if (!session) return { error: "Connectez-vous pour réagir." };
   const ALLOWED = ["👍", "❤️", "😂", "🔥", "👀"];
   if (!ALLOWED.includes(emoji)) return { error: "Emoji non autorisé." };
-  await toggleForumReaction(targetId, targetType, session.userId, emoji);
+
+  const action = await toggleForumReaction(targetId, targetType, session.userId, emoji);
+
+  if (action === "added") {
+    let ownerId: string | null = null;
+    let ownerTitle: string | null = null;
+    let ownerLink:  string | null = null;
+
+    if (targetType === "topic") {
+      const topic = await getForumTopic(targetId);
+      if (topic) {
+        ownerId    = topic.userId;
+        ownerTitle = topic.title;
+        ownerLink  = `/forum/${topic.categorySlug}/${targetId}`;
+      }
+    } else {
+      const reply = await getForumReply(targetId);
+      if (reply) {
+        ownerId = reply.userId;
+        const topic = await getForumTopic(reply.topicId);
+        if (topic) {
+          ownerTitle = topic.title;
+          ownerLink  = `/forum/${topic.categorySlug}/${reply.topicId}`;
+        }
+      }
+    }
+
+    if (ownerId && ownerId !== session.userId) {
+      await createNotification({
+        userId:  ownerId,
+        type:    "reaction_received",
+        title:   `${session.username} a réagi à votre publication`,
+        message: ownerTitle ? `${emoji} sur "${ownerTitle}"` : emoji,
+        link:    ownerLink ?? undefined,
+      });
+    }
+  }
+
   return {};
 }
 
@@ -163,9 +274,23 @@ export async function reportPostAction(
 }
 
 export async function resolveReportAction(reportId: string): Promise<void> {
-  await requireMod();
+  const session = await requireMod();
+  const report  = await getForumReport(reportId);
   await resolveForumReport(reportId);
-  revalidatePath("/admin/forum/signalements");
+  await createLog({
+    userId:   session.userId,
+    username: session.username,
+    role:     session.role,
+    action:   "forum.report_resolve",
+    targetId: reportId,
+    target:   report?.topicTitle ?? undefined,
+    meta: {
+      reporter:   report?.username,
+      targetType: report?.targetType,
+      reason:     report?.reason?.slice(0, 120),
+    },
+  });
+  revalidatePath("/admin/forum");
 }
 
 // ─── Admin : catégories ───────────────────────────────────────────────────────
@@ -220,22 +345,54 @@ export async function deleteCategoryAction(id: string): Promise<{ error?: string
 // ─── Modération : validation des sujets ──────────────────────────────────────
 
 export async function approveTopicAction(topicId: string): Promise<{ error?: string }> {
-  await requireMod();
+  const session = await requireMod();
   const topic = await getForumTopic(topicId);
   if (!topic) return { error: "Sujet introuvable." };
   await approveForumTopic(topicId);
+  await createLog({
+    userId:   session.userId,
+    username: session.username,
+    role:     session.role,
+    action:   "forum.topic_approve",
+    target:   topic.title,
+    targetId: topicId,
+    meta:     { author: topic.displayName, category: topic.categoryName },
+  });
+  await createNotification({
+    userId:  topic.userId,
+    type:    "topic_approved",
+    title:   "Votre sujet a été approuvé ✅",
+    message: `"${topic.title}" est maintenant visible sur le forum.`,
+    link:    `/forum/${topic.categorySlug}/${topicId}`,
+  });
   revalidatePath(`/forum/${topic.categorySlug}`);
   revalidatePath(`/forum/${topic.categorySlug}/${topicId}`);
-  revalidatePath("/admin/forum/moderation");
+  revalidatePath("/admin/forum");
   return {};
 }
 
 export async function rejectTopicAction(topicId: string, reason: string): Promise<{ error?: string }> {
-  await requireMod();
+  const session = await requireMod();
   const topic = await getForumTopic(topicId);
   if (!topic) return { error: "Sujet introuvable." };
   await rejectForumTopic(topicId, reason);
+  await createLog({
+    userId:   session.userId,
+    username: session.username,
+    role:     session.role,
+    action:   "forum.topic_reject",
+    target:   topic.title,
+    targetId: topicId,
+    meta:     { author: topic.displayName, category: topic.categoryName, ...(reason ? { reason } : {}) },
+  });
+  await createNotification({
+    userId:  topic.userId,
+    type:    "topic_rejected",
+    title:   "Votre sujet a été refusé",
+    message: `"${topic.title}"${reason ? ` — Raison : ${reason}` : ""}`,
+    link:    `/profil?tab=publications`,
+  });
   revalidatePath(`/forum/${topic.categorySlug}`);
-  revalidatePath("/admin/forum/moderation");
+  revalidatePath("/admin/forum");
   return {};
 }

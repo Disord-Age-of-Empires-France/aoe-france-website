@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Calendar, ArrowLeft, ChevronRight } from "lucide-react";
+import ShareButton from "@/components/ShareButton";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { getArticle, getPublishedArticles, getSettings } from "@/lib/db";
@@ -116,11 +117,12 @@ export default async function ArticlePage({ params }: Props) {
             {/* Article */}
             <article className="min-w-0">
               {/* Meta row */}
-              <div className="flex items-center gap-3 pb-6 border-b border-[#1c2d47] mb-2">
+              <div className="flex items-center justify-between gap-3 pb-6 border-b border-[#1c2d47] mb-2">
                 <span className="flex items-center gap-1.5 text-gray-500 text-xs">
                   <Calendar size={12} />
                   {formatDate(article.date)}
                 </span>
+                <ShareButton path={`/actualites/${article.id}`} title={article.title} />
               </div>
 
               {/* Description */}

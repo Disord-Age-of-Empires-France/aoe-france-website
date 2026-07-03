@@ -7,18 +7,12 @@ import BotCommandWidget from "@/components/BotCommandWidget";
 import { getSettings, getBotCommands } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { gateFeature } from "@/lib/public-access";
+import { getDiscordMemberCount, formatMemberCount } from "@/lib/discord";
 
 export const metadata = {
   title: "Discord — Communauté Age of Empires France",
   description: "Rejoignez le Discord francophone Age of Empires. Des milliers de joueurs, des salons dédiés à chaque jeu, des tournois et bien plus.",
 };
-
-const STATS = [
-  { value: "4 000+", label: "Membres" },
-  { value: "40+",    label: "Salons" },
-  { value: "5",      label: "Jeux couverts" },
-  { value: "24/7",   label: "Actif" },
-];
 
 const CHANNELS = [
   {
@@ -71,12 +65,7 @@ const ROLES = [
   { name: "Membre",       color: "bg-gray-800/60 text-gray-300 border-gray-700/40",       desc: "Membre de la communauté" },
 ];
 
-const WHY_JOIN = [
-  {
-    icon: <Users size={22} />,
-    title: "Une communauté active",
-    desc: "Plus de 4 000 joueurs francophones passionnés par la franchise Age of Empires, du débutant au compétiteur.",
-  },
+const WHY_JOIN_EXTRA = [
   {
     icon: <MessageCircle size={22} />,
     title: "Salons dédiés par jeu",
@@ -109,6 +98,26 @@ export default async function DiscordPage() {
   gateFeature(settings, session, settings.features.community);
   gateFeature(settings, session, settings.navItems.community.includes("discord"));
   const { discordInvite } = settings;
+
+  const memberCount = discordInvite ? await getDiscordMemberCount(discordInvite) : null;
+  const memberValue = memberCount ? memberCount.toLocaleString("fr-FR") : "4 000+";
+  const memberText  = formatMemberCount(memberCount, "plus de 4 000");
+
+  const STATS = [
+    { value: memberValue, label: "Membres" },
+    { value: "40+",       label: "Salons" },
+    { value: "5",         label: "Jeux couverts" },
+    { value: "24/7",      label: "Actif" },
+  ];
+
+  const WHY_JOIN = [
+    {
+      icon: <Users size={22} />,
+      title: "Une communauté active",
+      desc: `${memberText} joueurs francophones passionnés par la franchise Age of Empires, du débutant au compétiteur.`,
+    },
+    ...WHY_JOIN_EXTRA,
+  ];
 
   return (
     <>

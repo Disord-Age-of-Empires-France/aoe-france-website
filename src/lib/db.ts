@@ -69,6 +69,12 @@ async function migrate() {
   try { await client.execute("ALTER TABLE users ADD COLUMN social_links TEXT NOT NULL DEFAULT '[]'"); } catch { /* already exists */ }
   try { await client.execute("ALTER TABLE users ADD COLUMN display_name_changed_at TEXT"); } catch { /* already exists */ }
   try { await client.execute("ALTER TABLE users ADD COLUMN profile_public INTEGER NOT NULL DEFAULT 1"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN steam_id TEXT"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN steam_username TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN steam_avatar TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN xbox_id TEXT"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN xbox_gamertag TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN xbox_avatar TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
   try {
     await client.execute(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_discord_id ON users(discord_id) WHERE discord_id IS NOT NULL"
@@ -176,6 +182,7 @@ async function migrate() {
       created_at TEXT NOT NULL
     )
   `);
+  try { await client.execute("ALTER TABLE logs ADD COLUMN meta TEXT"); } catch { /* already exists */ }
 
   // Default settings + feature flags
   await client.batch(
@@ -196,6 +203,15 @@ async function migrate() {
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["navbar_items_news",      '["patch-notes","evenements","tournois"]'] },
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["navbar_items_guides",    '["aoe2","aoe3","aoe4","aom"]'] },
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["navbar_items_community", '["discord","tournois","evenements","partenaires"]'] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["feature_coaching",  "1"] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["steam_app_id_aoe2", "813780"] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["steam_app_id_aoe3", "933110"] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["steam_app_id_aoe4", "1466860"] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["steam_app_id_aom",  "1934680"] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["promo_text_aoe2", ""] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["promo_text_aoe3", ""] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["promo_text_aoe4", ""] },
+      { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["promo_text_aom",  ""] },
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["maintenance_mode",    "0"] },
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["maintenance_message", ""] },
       { sql: "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", args: ["maintenance_end",     ""] },
@@ -263,6 +279,93 @@ async function migrate() {
       created_at  TEXT NOT NULL
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id         TEXT PRIMARY KEY,
+      user_id    TEXT NOT NULL,
+      type       TEXT NOT NULL,
+      title      TEXT NOT NULL,
+      message    TEXT,
+      link       TEXT,
+      read_at    TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // Store links table
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS store_links (
+      id            TEXT    PRIMARY KEY,
+      game          TEXT    NOT NULL,
+      store_name    TEXT    NOT NULL DEFAULT '',
+      store_type    TEXT    NOT NULL DEFAULT 'other',
+      url           TEXT    NOT NULL DEFAULT '',
+      is_affiliate  INTEGER NOT NULL DEFAULT 0,
+      is_game_pass  INTEGER NOT NULL DEFAULT 0,
+      badge         TEXT    NOT NULL DEFAULT '',
+      price_display TEXT    NOT NULL DEFAULT '',
+      active        INTEGER NOT NULL DEFAULT 1,
+      position      INTEGER NOT NULL DEFAULT 0,
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    )
+  `);
+
+  // Coaches table
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS coaches (
+      id               TEXT    PRIMARY KEY,
+      pseudo_aoe       TEXT    NOT NULL DEFAULT '',
+      discord_name     TEXT    NOT NULL DEFAULT '',
+      rank             TEXT    NOT NULL DEFAULT '',
+      elo              INTEGER NOT NULL DEFAULT 0,
+      civilizations    TEXT    NOT NULL DEFAULT '[]',
+      coaching_format  TEXT    NOT NULL DEFAULT '',
+      experience       TEXT    NOT NULL DEFAULT '',
+      price            TEXT    NOT NULL DEFAULT '',
+      aoe_world_link   TEXT    NOT NULL DEFAULT '',
+      avatar           TEXT    NOT NULL DEFAULT '',
+      active           INTEGER NOT NULL DEFAULT 1,
+      position         INTEGER NOT NULL DEFAULT 0,
+      created_at       TEXT    NOT NULL,
+      updated_at       TEXT    NOT NULL
+    )
+  `);
+
+  // 2FA (TOTP) columns
+  try { await client.execute("ALTER TABLE users ADD COLUMN totp_secret TEXT"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { await client.execute("ALTER TABLE users ADD COLUMN totp_backup_codes TEXT NOT NULL DEFAULT '[]'"); } catch { /* already exists */ }
+
+  // Trusted devices (remembered browsers after 2FA)
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      token_hash  TEXT NOT NULL,
+      expires_at  TEXT NOT NULL,
+      user_agent  TEXT NOT NULL DEFAULT '',
+      created_at  TEXT NOT NULL
+    )
+  `);
+
+  // WebAuthn / clés de sécurité physiques
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS webauthn_credentials (
+      id            TEXT    PRIMARY KEY,
+      user_id       TEXT    NOT NULL,
+      name          TEXT    NOT NULL DEFAULT 'Clé de sécurité',
+      credential_id TEXT    NOT NULL UNIQUE,
+      public_key    TEXT    NOT NULL,
+      counter       INTEGER NOT NULL DEFAULT 0,
+      device_type   TEXT    NOT NULL DEFAULT 'singleDevice',
+      backed_up     INTEGER NOT NULL DEFAULT 0,
+      transports    TEXT    NOT NULL DEFAULT '[]',
+      created_at    TEXT    NOT NULL,
+      last_used_at  TEXT
+    )
+  `);
+
   // Forum topic moderation status (default 'approved' pour les topics existants)
   try { await client.execute("ALTER TABLE forum_topics ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'"); } catch { /* already exists */ }
   try { await client.execute("ALTER TABLE forum_topics ADD COLUMN deleted_reason TEXT"); } catch { /* already exists */ }
@@ -277,6 +380,55 @@ async function migrate() {
     { sql: "INSERT OR IGNORE INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: ["fcat-aoe4",    "aoe4",    "AoE IV", "Stratégies et discussions autour d'Age of Empires IV.", "blue",   "🏰", 3, forumSeedAt] },
     { sql: "INSERT OR IGNORE INTO forum_categories (id, slug, name, description, color, icon, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", args: ["fcat-aom",     "aom",     "AoM: Retold", "Panthéons, dieux et stratégies d'Age of Mythology: Retold.", "amber", "⚡", 4, forumSeedAt] },
   ], "write");
+
+  // Game entities (units, buildings, technologies)
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS game_entities (
+      id           TEXT    PRIMARY KEY,
+      game         TEXT    NOT NULL,
+      civilization TEXT,
+      type         TEXT    NOT NULL,
+      slug         TEXT    NOT NULL,
+      name         TEXT    NOT NULL,
+      description  TEXT    NOT NULL DEFAULT '',
+      icon_url     TEXT    NOT NULL DEFAULT '',
+      category     TEXT    NOT NULL DEFAULT '',
+      age          TEXT    NOT NULL DEFAULT '',
+      stats        TEXT    NOT NULL DEFAULT '{}',
+      updated_at   TEXT    NOT NULL,
+      UNIQUE(game, civilization, type, slug)
+    )
+  `);
+
+  // Game data tables
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS game_civilizations (
+      id          TEXT    PRIMARY KEY,
+      game        TEXT    NOT NULL,
+      slug        TEXT    NOT NULL,
+      name        TEXT    NOT NULL,
+      description TEXT    NOT NULL DEFAULT '',
+      icon_url    TEXT    NOT NULL DEFAULT '',
+      dlc         TEXT,
+      win_rate    REAL,
+      pick_rate   REAL,
+      games_count INTEGER,
+      data        TEXT    NOT NULL DEFAULT '{}',
+      updated_at  TEXT    NOT NULL,
+      UNIQUE(game, slug)
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS game_sync_logs (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      game            TEXT    NOT NULL,
+      source          TEXT    NOT NULL,
+      status          TEXT    NOT NULL,
+      records_updated INTEGER NOT NULL DEFAULT 0,
+      error           TEXT,
+      synced_at       TEXT    NOT NULL
+    )
+  `);
 
   // Seed first admin from env vars if no users exist
   const { rows: countRows } = await client.execute("SELECT COUNT(*) as cnt FROM users");
@@ -343,6 +495,15 @@ function toUser(row: Record<string, unknown>): User {
     socialLinks:   (() => { try { return JSON.parse(String(row.social_links ?? "[]")); } catch { return []; } })(),
     displayNameChangedAt: row.display_name_changed_at ? String(row.display_name_changed_at) : null,
     profilePublic: row.profile_public !== 0,
+    steamId:       row.steam_id ? String(row.steam_id) : null,
+    steamUsername: String(row.steam_username ?? ""),
+    steamAvatar:   String(row.steam_avatar ?? ""),
+    xboxId:        row.xbox_id ? String(row.xbox_id) : null,
+    xboxGamertag:  String(row.xbox_gamertag ?? ""),
+    xboxAvatar:    String(row.xbox_avatar ?? ""),
+    totpEnabled:   Number(row.totp_enabled ?? 0) === 1,
+    totpSecret:    row.totp_secret ? String(row.totp_secret) : null,
+    totpBackupCodes: (() => { try { return JSON.parse(String(row.totp_backup_codes ?? "[]")); } catch { return []; } })(),
     createdAt:     String(row.created_at),
     lastLogin:     row.last_login ? String(row.last_login) : null,
   };
@@ -383,6 +544,15 @@ export interface User {
   socialLinks:          { type: string; url: string }[];
   displayNameChangedAt: string | null;
   profilePublic:        boolean;
+  steamId:              string | null;
+  steamUsername:        string;
+  steamAvatar:          string;
+  xboxId:               string | null;
+  xboxGamertag:         string;
+  xboxAvatar:           string;
+  totpEnabled:          boolean;
+  totpSecret:           string | null;
+  totpBackupCodes:      string[];
   createdAt:            string;
   lastLogin:            string | null;
 }
@@ -411,9 +581,47 @@ export interface BotCommand {
   updatedAt:          string;
 }
 
+export type StoreType = "steam" | "xbox" | "ms_store" | "ps_store" | "game_pass" | "other";
+
+export interface StoreLink {
+  id:           string;
+  game:         string;
+  storeName:    string;
+  storeType:    StoreType;
+  url:          string;
+  isAffiliate:  boolean;
+  isGamePass:   boolean;
+  badge:        string;
+  priceDisplay: string;
+  active:       boolean;
+  position:     number;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+export interface Coach {
+  id:             string;
+  pseudoAoe:      string;
+  discordName:    string;
+  rank:           string;
+  elo:            number;
+  civilizations:  string[];
+  coachingFormat: string;
+  experience:     string;
+  price:          string;
+  aoeWorldLink:   string;
+  avatar:         string;
+  active:         boolean;
+  position:       number;
+  createdAt:      string;
+  updatedAt:      string;
+}
+
 export interface SiteSettings {
   discordInvite: string;
   siteName:      string;
+  steamAppIds: { aoe2: string; aoe3: string; aoe4: string; aom: string };
+  promoTexts:  { aoe2: string; aoe3: string; aoe4: string; aom: string };
   maintenance: {
     active:  boolean;
     message: string;
@@ -423,6 +631,7 @@ export interface SiteSettings {
     news:      boolean;
     guides:    boolean;
     community: boolean;
+    coaching:  boolean;
     games: {
       aoe2: boolean;
       aoe3: boolean;
@@ -439,6 +648,176 @@ export interface SiteSettings {
     guides:    string[];
     community: string[];
   };
+}
+
+// ─── Store links ─────────────────────────────────────────────────────────────
+
+function toStoreLink(row: Record<string, unknown>): StoreLink {
+  const VALID_TYPES: StoreType[] = ["steam", "xbox", "ms_store", "ps_store", "game_pass", "other"];
+  const t = String(row.store_type ?? "other") as StoreType;
+  return {
+    id:           String(row.id),
+    game:         String(row.game         ?? ""),
+    storeName:    String(row.store_name   ?? ""),
+    storeType:    VALID_TYPES.includes(t) ? t : "other",
+    url:          String(row.url          ?? ""),
+    isAffiliate:  row.is_affiliate !== 0,
+    isGamePass:   row.is_game_pass !== 0,
+    badge:        String(row.badge        ?? ""),
+    priceDisplay: String(row.price_display ?? ""),
+    active:       row.active !== 0,
+    position:     Number(row.position     ?? 0),
+    createdAt:    String(row.created_at),
+    updatedAt:    String(row.updated_at),
+  };
+}
+
+export async function getStoreLinks(): Promise<StoreLink[]> {
+  await ensureReady();
+  const { rows } = await client.execute("SELECT * FROM store_links ORDER BY game ASC, position ASC, created_at ASC");
+  return rows.map(r => toStoreLink(r as unknown as Record<string, unknown>));
+}
+
+export async function getStoreLinksByGame(game: string, onlyActive = false): Promise<StoreLink[]> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: onlyActive
+      ? "SELECT * FROM store_links WHERE game = ? AND active = 1 ORDER BY position ASC, created_at ASC"
+      : "SELECT * FROM store_links WHERE game = ? ORDER BY position ASC, created_at ASC",
+    args: [game],
+  });
+  return rows.map(r => toStoreLink(r as unknown as Record<string, unknown>));
+}
+
+export async function getStoreLink(id: string): Promise<StoreLink | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({ sql: "SELECT * FROM store_links WHERE id = ?", args: [id] });
+  return rows[0] ? toStoreLink(rows[0] as unknown as Record<string, unknown>) : undefined;
+}
+
+export async function createStoreLink(data: Omit<StoreLink, "id" | "createdAt" | "updatedAt">): Promise<StoreLink> {
+  await ensureReady();
+  const id  = randomUUID();
+  const now = new Date().toISOString();
+  await client.execute({
+    sql: `INSERT INTO store_links
+            (id, game, store_name, store_type, url, is_affiliate, is_game_pass,
+             badge, price_display, active, position, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id, data.game, data.storeName, data.storeType, data.url,
+      data.isAffiliate ? 1 : 0, data.isGamePass ? 1 : 0,
+      data.badge, data.priceDisplay, data.active ? 1 : 0, data.position, now, now,
+    ],
+  });
+  return { ...data, id, createdAt: now, updatedAt: now };
+}
+
+export async function updateStoreLink(id: string, data: Partial<Omit<StoreLink, "id" | "createdAt" | "updatedAt">>): Promise<void> {
+  await ensureReady();
+  const now = new Date().toISOString();
+  const sets: string[] = ["updated_at = ?"];
+  const args: unknown[] = [now];
+  if (data.game         !== undefined) { sets.push("game = ?");          args.push(data.game); }
+  if (data.storeName    !== undefined) { sets.push("store_name = ?");    args.push(data.storeName); }
+  if (data.storeType    !== undefined) { sets.push("store_type = ?");    args.push(data.storeType); }
+  if (data.url          !== undefined) { sets.push("url = ?");           args.push(data.url); }
+  if (data.isAffiliate  !== undefined) { sets.push("is_affiliate = ?");  args.push(data.isAffiliate ? 1 : 0); }
+  if (data.isGamePass   !== undefined) { sets.push("is_game_pass = ?");  args.push(data.isGamePass ? 1 : 0); }
+  if (data.badge        !== undefined) { sets.push("badge = ?");         args.push(data.badge); }
+  if (data.priceDisplay !== undefined) { sets.push("price_display = ?"); args.push(data.priceDisplay); }
+  if (data.active       !== undefined) { sets.push("active = ?");        args.push(data.active ? 1 : 0); }
+  if (data.position     !== undefined) { sets.push("position = ?");      args.push(data.position); }
+  await client.execute({ sql: `UPDATE store_links SET ${sets.join(", ")} WHERE id = ?`, args: [...args, id] as InValue[] });
+}
+
+export async function deleteStoreLink(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "DELETE FROM store_links WHERE id = ?", args: [id] });
+}
+
+// ─── Coaches ─────────────────────────────────────────────────────────────────
+
+function toCoach(row: Record<string, unknown>): Coach {
+  let civilizations: string[] = [];
+  try { civilizations = JSON.parse(String(row.civilizations ?? "[]")); } catch { /* invalid json */ }
+  return {
+    id:             String(row.id),
+    pseudoAoe:      String(row.pseudo_aoe     ?? ""),
+    discordName:    String(row.discord_name   ?? ""),
+    rank:           String(row.rank           ?? ""),
+    elo:            Number(row.elo            ?? 0),
+    civilizations,
+    coachingFormat: String(row.coaching_format ?? ""),
+    experience:     String(row.experience     ?? ""),
+    price:          String(row.price          ?? ""),
+    aoeWorldLink:   String(row.aoe_world_link  ?? ""),
+    avatar:         String(row.avatar         ?? ""),
+    active:         row.active !== 0,
+    position:       Number(row.position       ?? 0),
+    createdAt:      String(row.created_at),
+    updatedAt:      String(row.updated_at),
+  };
+}
+
+export async function getCoaches(onlyActive = false): Promise<Coach[]> {
+  await ensureReady();
+  const { rows } = await client.execute(
+    onlyActive
+      ? "SELECT * FROM coaches WHERE active = 1 ORDER BY position ASC, created_at ASC"
+      : "SELECT * FROM coaches ORDER BY position ASC, created_at ASC"
+  );
+  return rows.map(r => toCoach(r as unknown as Record<string, unknown>));
+}
+
+export async function getCoach(id: string): Promise<Coach | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({ sql: "SELECT * FROM coaches WHERE id = ?", args: [id] });
+  return rows[0] ? toCoach(rows[0] as unknown as Record<string, unknown>) : undefined;
+}
+
+export async function createCoach(data: Omit<Coach, "id" | "createdAt" | "updatedAt">): Promise<Coach> {
+  await ensureReady();
+  const id  = randomUUID();
+  const now = new Date().toISOString();
+  await client.execute({
+    sql: `INSERT INTO coaches
+            (id, pseudo_aoe, discord_name, rank, elo, civilizations, coaching_format,
+             experience, price, aoe_world_link, avatar, active, position, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id, data.pseudoAoe, data.discordName, data.rank, data.elo,
+      JSON.stringify(data.civilizations), data.coachingFormat, data.experience,
+      data.price, data.aoeWorldLink, data.avatar, data.active ? 1 : 0,
+      data.position, now, now,
+    ],
+  });
+  return { ...data, id, createdAt: now, updatedAt: now };
+}
+
+export async function updateCoach(id: string, data: Partial<Omit<Coach, "id" | "createdAt" | "updatedAt">>): Promise<void> {
+  await ensureReady();
+  const now = new Date().toISOString();
+  const sets: string[] = ["updated_at = ?"];
+  const args: unknown[] = [now];
+  if (data.pseudoAoe      !== undefined) { sets.push("pseudo_aoe = ?");       args.push(data.pseudoAoe); }
+  if (data.discordName    !== undefined) { sets.push("discord_name = ?");     args.push(data.discordName); }
+  if (data.rank           !== undefined) { sets.push("rank = ?");             args.push(data.rank); }
+  if (data.elo            !== undefined) { sets.push("elo = ?");              args.push(data.elo); }
+  if (data.civilizations  !== undefined) { sets.push("civilizations = ?");    args.push(JSON.stringify(data.civilizations)); }
+  if (data.coachingFormat !== undefined) { sets.push("coaching_format = ?");  args.push(data.coachingFormat); }
+  if (data.experience     !== undefined) { sets.push("experience = ?");       args.push(data.experience); }
+  if (data.price          !== undefined) { sets.push("price = ?");            args.push(data.price); }
+  if (data.aoeWorldLink   !== undefined) { sets.push("aoe_world_link = ?");   args.push(data.aoeWorldLink); }
+  if (data.avatar         !== undefined) { sets.push("avatar = ?");           args.push(data.avatar); }
+  if (data.active         !== undefined) { sets.push("active = ?");           args.push(data.active ? 1 : 0); }
+  if (data.position       !== undefined) { sets.push("position = ?");         args.push(data.position); }
+  await client.execute({ sql: `UPDATE coaches SET ${sets.join(", ")} WHERE id = ?`, args: [...args, id] as InValue[] });
+}
+
+export async function deleteCoach(id: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "DELETE FROM coaches WHERE id = ?", args: [id] });
 }
 
 // ─── Articles ─────────────────────────────────────────────────────────────────
@@ -559,6 +938,7 @@ export async function getSettings(): Promise<SiteSettings> {
       news:      map.feature_news      !== "0",
       guides:    map.feature_guides    !== "0",
       community: map.feature_community !== "0",
+      coaching:  map.feature_coaching  !== "0",
       games: {
         aoe2: map.feature_game_aoe2 !== "0",
         aoe3: map.feature_game_aoe3 !== "0",
@@ -574,6 +954,18 @@ export async function getSettings(): Promise<SiteSettings> {
       news:      parseNavItems(map.navbar_items_news,      ["patch-notes", "evenements", "tournois"]),
       guides:    parseNavItems(map.navbar_items_guides,    ["aoe2", "aoe3", "aoe4", "aom"]),
       community: parseNavItems(map.navbar_items_community, ["discord", "tournois", "evenements", "partenaires"]),
+    },
+    steamAppIds: {
+      aoe2: map.steam_app_id_aoe2 ?? "813780",
+      aoe3: map.steam_app_id_aoe3 ?? "933110",
+      aoe4: map.steam_app_id_aoe4 ?? "1466860",
+      aom:  map.steam_app_id_aom  ?? "1934680",
+    },
+    promoTexts: {
+      aoe2: map.promo_text_aoe2 ?? "",
+      aoe3: map.promo_text_aoe3 ?? "",
+      aoe4: map.promo_text_aoe4 ?? "",
+      aom:  map.promo_text_aom  ?? "",
     },
   };
 }
@@ -591,6 +983,15 @@ export async function updateSettings(data: {
   feature_game_aoe3?:   boolean;
   feature_game_aoe4?:   boolean;
   feature_game_aom?:    boolean;
+  feature_coaching?:    boolean;
+  steam_app_id_aoe2?:   string;
+  steam_app_id_aoe3?:   string;
+  steam_app_id_aoe4?:   string;
+  steam_app_id_aom?:    string;
+  promo_text_aoe2?:     string;
+  promo_text_aoe3?:     string;
+  promo_text_aoe4?:     string;
+  promo_text_aom?:      string;
   navbar_items_aoe2?:      string[];
   navbar_items_aoe3?:      string[];
   navbar_items_aoe4?:      string[];
@@ -613,6 +1014,15 @@ export async function updateSettings(data: {
   if (data.feature_game_aoe3   !== undefined) pairs.push(["feature_game_aoe3",   data.feature_game_aoe3   ? "1" : "0"]);
   if (data.feature_game_aoe4   !== undefined) pairs.push(["feature_game_aoe4",   data.feature_game_aoe4   ? "1" : "0"]);
   if (data.feature_game_aom    !== undefined) pairs.push(["feature_game_aom",    data.feature_game_aom    ? "1" : "0"]);
+  if (data.feature_coaching    !== undefined) pairs.push(["feature_coaching",    data.feature_coaching    ? "1" : "0"]);
+  if (data.steam_app_id_aoe2  !== undefined) pairs.push(["steam_app_id_aoe2",  data.steam_app_id_aoe2]);
+  if (data.steam_app_id_aoe3  !== undefined) pairs.push(["steam_app_id_aoe3",  data.steam_app_id_aoe3]);
+  if (data.steam_app_id_aoe4  !== undefined) pairs.push(["steam_app_id_aoe4",  data.steam_app_id_aoe4]);
+  if (data.steam_app_id_aom   !== undefined) pairs.push(["steam_app_id_aom",   data.steam_app_id_aom]);
+  if (data.promo_text_aoe2    !== undefined) pairs.push(["promo_text_aoe2",    data.promo_text_aoe2]);
+  if (data.promo_text_aoe3    !== undefined) pairs.push(["promo_text_aoe3",    data.promo_text_aoe3]);
+  if (data.promo_text_aoe4    !== undefined) pairs.push(["promo_text_aoe4",    data.promo_text_aoe4]);
+  if (data.promo_text_aom     !== undefined) pairs.push(["promo_text_aom",     data.promo_text_aom]);
   if (data.navbar_items_aoe2      !== undefined) pairs.push(["navbar_items_aoe2",      JSON.stringify(data.navbar_items_aoe2)]);
   if (data.navbar_items_aoe3      !== undefined) pairs.push(["navbar_items_aoe3",      JSON.stringify(data.navbar_items_aoe3)]);
   if (data.navbar_items_aoe4      !== undefined) pairs.push(["navbar_items_aoe4",      JSON.stringify(data.navbar_items_aoe4)]);
@@ -665,7 +1075,7 @@ export async function createUser(data: {
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
     args: [id, data.username, data.passwordHash, data.displayName, data.email, data.role, createdAt],
   });
-  return { ...data, id, createdAt, lastLogin: null, discordId: null, discordAvatar: "", avatar: "", bio: "", location: "", website: "", socialLinks: [], displayNameChangedAt: null, profilePublic: true };
+  return { ...data, id, createdAt, lastLogin: null, discordId: null, discordAvatar: "", avatar: "", bio: "", location: "", website: "", socialLinks: [], displayNameChangedAt: null, profilePublic: true, steamId: null, steamUsername: "", steamAvatar: "", xboxId: null, xboxGamertag: "", xboxAvatar: "", totpEnabled: false, totpSecret: null, totpBackupCodes: [] };
 }
 
 export async function updateUser(
@@ -693,6 +1103,34 @@ export async function updateUser(
   const set  = entries.map(([k]) => `${COL[k]} = ?`).join(", ");
   const args: InValue[] = entries.map(([, v]) => String(v));
   await client.execute({ sql: `UPDATE users SET ${set} WHERE id = ?`, args: [...args, id] });
+}
+
+export async function updateUserXbox(userId: string, xboxId: string | null, xboxGamertag: string, xboxAvatar: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE users SET xbox_id = ?, xbox_gamertag = ?, xbox_avatar = ? WHERE id = ?",
+    args: [xboxId, xboxGamertag, xboxAvatar, userId],
+  });
+}
+
+export async function getUserByXboxId(xboxId: string): Promise<User | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({ sql: "SELECT * FROM users WHERE xbox_id = ?", args: [xboxId] });
+  return rows[0] ? toUser(rows[0] as unknown as Record<string, unknown>) : undefined;
+}
+
+export async function updateUserSteam(userId: string, steamId: string | null, steamUsername: string, steamAvatar: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE users SET steam_id = ?, steam_username = ?, steam_avatar = ? WHERE id = ?",
+    args: [steamId, steamUsername, steamAvatar, userId],
+  });
+}
+
+export async function getUserBySteamId(steamId: string): Promise<User | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({ sql: "SELECT * FROM users WHERE steam_id = ?", args: [steamId] });
+  return rows[0] ? toUser(rows[0] as unknown as Record<string, unknown>) : undefined;
 }
 
 export async function updateUserLastLogin(id: string): Promise<void> {
@@ -745,8 +1183,79 @@ export async function createDiscordUser(data: {
     id, username: data.username, passwordHash: "", displayName: data.displayName,
     email: data.email, role: "member", discordId: data.discordId,
     discordAvatar: data.discordAvatar, avatar: "", bio: "", location: "", website: "", socialLinks: [],
-    displayNameChangedAt: null, profilePublic: true, createdAt, lastLogin: null,
+    displayNameChangedAt: null, profilePublic: true, steamId: null, steamUsername: "", steamAvatar: "", xboxId: null, xboxGamertag: "", xboxAvatar: "", totpEnabled: false, totpSecret: null, totpBackupCodes: [], createdAt, lastLogin: null,
   };
+}
+
+// ─── TOTP / 2FA ───────────────────────────────────────────────────────────────
+
+export async function enableTOTP(userId: string, secret: string, hashedBackupCodes: string[]): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE users SET totp_secret = ?, totp_enabled = 1, totp_backup_codes = ? WHERE id = ?",
+    args: [secret, JSON.stringify(hashedBackupCodes), userId],
+  });
+}
+
+export async function disableTOTP(userId: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE users SET totp_secret = NULL, totp_enabled = 0, totp_backup_codes = '[]' WHERE id = ?",
+    args: [userId],
+  });
+}
+
+export async function updateTOTPBackupCodes(userId: string, hashedCodes: string[]): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE users SET totp_backup_codes = ? WHERE id = ?",
+    args: [JSON.stringify(hashedCodes), userId],
+  });
+}
+
+export async function storePendingTOTPSecret(userId: string, secret: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE users SET totp_secret = ?, totp_enabled = 0 WHERE id = ?",
+    args: [secret, userId],
+  });
+}
+
+// ─── Trusted devices ──────────────────────────────────────────────────────────
+
+export async function createTrustedDevice(
+  userId:    string,
+  tokenHash: string,
+  expiresAt: string,
+  userAgent: string,
+): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "INSERT INTO trusted_devices (id, user_id, token_hash, expires_at, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    args: [randomUUID(), userId, tokenHash, expiresAt, userAgent, new Date().toISOString()],
+  });
+}
+
+export async function isTrustedDevice(userId: string, tokenHash: string): Promise<boolean> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql:  "SELECT id FROM trusted_devices WHERE user_id = ? AND token_hash = ? AND expires_at > ?",
+    args: [userId, tokenHash, new Date().toISOString()],
+  });
+  return rows.length > 0;
+}
+
+export async function deleteTrustedDevice(userId: string, tokenHash: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "DELETE FROM trusted_devices WHERE user_id = ? AND token_hash = ?",
+    args: [userId, tokenHash],
+  });
+}
+
+export async function deleteAllTrustedDevices(userId: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "DELETE FROM trusted_devices WHERE user_id = ?", args: [userId] });
 }
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────
@@ -759,34 +1268,41 @@ export interface Log {
   action:    string;
   target:    string | null;
   targetId:  string | null;
+  meta:      Record<string, unknown> | null;
   createdAt: string;
 }
 
 function toLog(row: Record<string, unknown>): Log {
+  let meta: Record<string, unknown> | null = null;
+  if (row.meta) {
+    try { meta = JSON.parse(String(row.meta)); } catch { /* ignore */ }
+  }
   return {
     id:        String(row.id),
-    userId:    row.user_id ? String(row.user_id) : null,
-    username:  String(row.username ?? ""),
-    role:      String(row.role ?? ""),
+    userId:    row.user_id   ? String(row.user_id)   : null,
+    username:  String(row.username  ?? ""),
+    role:      String(row.role      ?? ""),
     action:    String(row.action),
-    target:    row.target   ? String(row.target)    : null,
+    target:    row.target    ? String(row.target)    : null,
     targetId:  row.target_id ? String(row.target_id) : null,
+    meta,
     createdAt: String(row.created_at),
   };
 }
 
 export async function createLog(data: {
-  userId:   string | null;
-  username: string;
-  role:     string;
-  action:   string;
-  target?:  string;
+  userId:    string | null;
+  username:  string;
+  role:      string;
+  action:    string;
+  target?:   string;
   targetId?: string;
+  meta?:     Record<string, unknown>;
 }): Promise<void> {
   await ensureReady();
   await client.execute({
-    sql:  `INSERT INTO logs (id, user_id, username, role, action, target, target_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql:  `INSERT INTO logs (id, user_id, username, role, action, target, target_id, meta, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       randomUUID(),
       data.userId   ?? null,
@@ -795,6 +1311,7 @@ export async function createLog(data: {
       data.action,
       data.target   ?? null,
       data.targetId ?? null,
+      data.meta     ? JSON.stringify(data.meta) : null,
       new Date().toISOString(),
     ],
   });
@@ -893,11 +1410,32 @@ export async function deleteBotCommand(id: string): Promise<void> {
   await client.execute({ sql: "DELETE FROM bot_commands WHERE id = ?", args: [id] });
 }
 
-export async function getLogs(limit = 200): Promise<Log[]> {
+export interface LogFilters {
+  category?: string;
+  username?: string;
+}
+
+export async function getLogs(limit = 200, filters?: LogFilters): Promise<Log[]> {
   await ensureReady();
+
+  const conditions: string[] = [];
+  const args: (string | number | null)[] = [];
+
+  if (filters?.category) {
+    conditions.push("action LIKE ?");
+    args.push(`${filters.category}.%`);
+  }
+  if (filters?.username) {
+    conditions.push("username LIKE ?");
+    args.push(`%${filters.username}%`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  args.push(limit);
+
   const { rows } = await client.execute({
-    sql:  "SELECT * FROM logs ORDER BY created_at DESC LIMIT ?",
-    args: [limit],
+    sql:  `SELECT * FROM logs ${where} ORDER BY created_at DESC LIMIT ?`,
+    args,
   });
   return rows.map(r => toLog(r as unknown as Record<string, unknown>));
 }
@@ -1179,13 +1717,15 @@ export async function getForumReactions(targetIds: string[], targetType: string,
   return result;
 }
 
-export async function toggleForumReaction(targetId: string, targetType: string, userId: string, emoji: string): Promise<void> {
+export async function toggleForumReaction(targetId: string, targetType: string, userId: string, emoji: string): Promise<"added" | "removed"> {
   await ensureReady();
   const { rows } = await client.execute({ sql: "SELECT id FROM forum_reactions WHERE target_id = ? AND target_type = ? AND user_id = ? AND emoji = ?", args: [targetId, targetType, userId, emoji] });
   if (rows.length > 0) {
     await client.execute({ sql: "DELETE FROM forum_reactions WHERE target_id = ? AND target_type = ? AND user_id = ? AND emoji = ?", args: [targetId, targetType, userId, emoji] });
+    return "removed";
   } else {
     await client.execute({ sql: "INSERT INTO forum_reactions (id, target_id, target_type, user_id, emoji, created_at) VALUES (?, ?, ?, ?, ?, ?)", args: [randomUUID(), targetId, targetType, userId, emoji, new Date().toISOString()] });
+    return "added";
   }
 }
 
@@ -1221,6 +1761,34 @@ export async function getForumReports(resolved = false): Promise<ForumReport[]> 
       categorySlug: row.category_slug ? String(row.category_slug) : null,
     };
   });
+}
+
+export async function getForumReport(id: string): Promise<ForumReport | null> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: `SELECT r.*, u.username,
+            CASE WHEN r.target_type = 'topic' THEN r.target_id
+                 ELSE (SELECT fr.topic_id FROM forum_replies fr WHERE fr.id = r.target_id) END AS topic_id,
+            CASE WHEN r.target_type = 'topic' THEN (SELECT ft.title FROM forum_topics ft WHERE ft.id = r.target_id)
+                 ELSE (SELECT ft.title FROM forum_topics ft JOIN forum_replies fr ON fr.topic_id = ft.id WHERE fr.id = r.target_id) END AS topic_title,
+            CASE WHEN r.target_type = 'topic' THEN (SELECT fc.slug FROM forum_categories fc JOIN forum_topics ft ON ft.category_id = fc.id WHERE ft.id = r.target_id)
+                 ELSE (SELECT fc.slug FROM forum_categories fc JOIN forum_topics ft ON ft.category_id = fc.id JOIN forum_replies fr ON fr.topic_id = ft.id WHERE fr.id = r.target_id) END AS category_slug
+          FROM forum_reports r LEFT JOIN users u ON u.id = r.user_id
+          WHERE r.id = ? LIMIT 1`,
+    args: [id],
+  });
+  if (!rows[0]) return null;
+  const row = rows[0] as unknown as Record<string, unknown>;
+  return {
+    id: String(row.id), targetId: String(row.target_id),
+    targetType: String(row.target_type) as "topic" | "reply",
+    userId: String(row.user_id), username: String(row.username ?? ""),
+    reason: String(row.reason ?? ""), resolved: Number(row.resolved) !== 0,
+    createdAt: String(row.created_at),
+    topicId: row.topic_id ? String(row.topic_id) : null,
+    topicTitle: row.topic_title ? String(row.topic_title) : null,
+    categorySlug: row.category_slug ? String(row.category_slug) : null,
+  };
 }
 
 export async function resolveForumReport(id: string): Promise<void> {
@@ -1280,4 +1848,462 @@ export async function getForumReply(id: string): Promise<ForumReply | undefined>
     args: [id],
   });
   return rows[0] ? row2reply(rows[0] as unknown as Record<string, unknown>) : undefined;
+}
+
+// ─── User forum stats (for dashboard) ────────────────────────────────────────
+
+export interface UserForumStats {
+  topics:            number;
+  replies:           number;
+  reactionsReceived: number;
+}
+
+export async function getUserForumStats(userId: string): Promise<UserForumStats> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: `SELECT
+            (SELECT COUNT(*) FROM forum_topics  WHERE user_id = ? AND status = 'approved') AS topics,
+            (SELECT COUNT(*) FROM forum_replies WHERE user_id = ?) AS replies,
+            (SELECT COUNT(*) FROM forum_reactions
+               WHERE target_type = 'topic'
+                 AND target_id IN (SELECT id FROM forum_topics WHERE user_id = ? AND status = 'approved'))
+            +
+            (SELECT COUNT(*) FROM forum_reactions
+               WHERE target_type = 'reply'
+                 AND target_id IN (SELECT id FROM forum_replies WHERE user_id = ?)) AS reactions_received`,
+    args: [userId, userId, userId, userId],
+  });
+  const r = rows[0] as unknown as Record<string, unknown>;
+  return {
+    topics:            Number(r.topics            ?? 0),
+    replies:           Number(r.replies            ?? 0),
+    reactionsReceived: Number(r.reactions_received ?? 0),
+  };
+}
+
+export async function searchUsers(
+  q: string,
+  limit = 6,
+): Promise<{ username: string; displayName: string }[]> {
+  await ensureReady();
+  if (!q.trim()) return [];
+  const { rows } = await client.execute({
+    sql: `SELECT username, display_name FROM users WHERE username LIKE ? OR display_name LIKE ? ORDER BY username LIMIT ?`,
+    args: [`${q}%`, `${q}%`, limit],
+  });
+  return rows.map((r) => {
+    const row = r as unknown as Record<string, unknown>;
+    return { username: String(row.username ?? ""), displayName: String(row.display_name ?? "") };
+  });
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface Notification {
+  id:        string;
+  userId:    string;
+  type:      string;
+  title:     string;
+  message:   string | null;
+  link:      string | null;
+  readAt:    string | null;
+  createdAt: string;
+}
+
+function row2notif(r: Record<string, unknown>): Notification {
+  return {
+    id:        String(r.id),
+    userId:    String(r.user_id),
+    type:      String(r.type),
+    title:     String(r.title),
+    message:   r.message ? String(r.message) : null,
+    link:      r.link    ? String(r.link)    : null,
+    readAt:    r.read_at ? String(r.read_at) : null,
+    createdAt: String(r.created_at),
+  };
+}
+
+export async function createNotification(data: {
+  userId:  string;
+  type:    string;
+  title:   string;
+  message?: string;
+  link?:   string;
+}): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql: "INSERT INTO notifications (id, user_id, type, title, message, link, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [randomUUID(), data.userId, data.type, data.title, data.message ?? null, data.link ?? null, new Date().toISOString()],
+  });
+}
+
+export async function getUserNotifications(userId: string, limit = 30): Promise<Notification[]> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+    args: [userId, limit],
+  });
+  return rows.map(r => row2notif(r as unknown as Record<string, unknown>));
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql: "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL",
+    args: [new Date().toISOString(), userId],
+  });
+}
+
+export async function deleteAllNotifications(userId: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "DELETE FROM notifications WHERE user_id = ?", args: [userId] });
+}
+
+export async function getUnreadNotifCount(userId: string): Promise<number> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql: "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND read_at IS NULL",
+    args: [userId],
+  });
+  return Number((rows[0] as unknown as Record<string, unknown>)?.cnt ?? 0);
+}
+
+// ─── WebAuthn credentials ─────────────────────────────────────────────────────
+
+export interface WebAuthnCredential {
+  id:           string;
+  userId:       string;
+  name:         string;
+  credentialId: string;   // base64url
+  publicKey:    string;   // base64url-encoded Uint8Array
+  counter:      number;
+  deviceType:   string;
+  backedUp:     boolean;
+  transports:   string[];
+  createdAt:    string;
+  lastUsedAt:   string | null;
+}
+
+function toWebAuthnCredential(row: Record<string, unknown>): WebAuthnCredential {
+  let transports: string[] = [];
+  try { transports = JSON.parse(String(row.transports ?? "[]")); } catch { /* invalid json */ }
+  return {
+    id:           String(row.id),
+    userId:       String(row.user_id),
+    name:         String(row.name ?? "Clé de sécurité"),
+    credentialId: String(row.credential_id),
+    publicKey:    String(row.public_key),
+    counter:      Number(row.counter ?? 0),
+    deviceType:   String(row.device_type ?? "singleDevice"),
+    backedUp:     Number(row.backed_up ?? 0) === 1,
+    transports,
+    createdAt:    String(row.created_at),
+    lastUsedAt:   row.last_used_at ? String(row.last_used_at) : null,
+  };
+}
+
+export async function getWebAuthnCredentials(userId: string): Promise<WebAuthnCredential[]> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql:  "SELECT * FROM webauthn_credentials WHERE user_id = ? ORDER BY created_at ASC",
+    args: [userId],
+  });
+  return rows.map(r => toWebAuthnCredential(r as unknown as Record<string, unknown>));
+}
+
+export async function getWebAuthnCredentialByCredentialId(credentialId: string): Promise<WebAuthnCredential | undefined> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql:  "SELECT * FROM webauthn_credentials WHERE credential_id = ?",
+    args: [credentialId],
+  });
+  return rows[0] ? toWebAuthnCredential(rows[0] as unknown as Record<string, unknown>) : undefined;
+}
+
+export async function createWebAuthnCredential(data: {
+  userId:       string;
+  name:         string;
+  credentialId: string;
+  publicKey:    string;
+  counter:      number;
+  deviceType:   string;
+  backedUp:     boolean;
+  transports:   string[];
+}): Promise<WebAuthnCredential> {
+  await ensureReady();
+  const id  = randomUUID();
+  const now = new Date().toISOString();
+  await client.execute({
+    sql: `INSERT INTO webauthn_credentials
+            (id, user_id, name, credential_id, public_key, counter, device_type, backed_up, transports, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id, data.userId, data.name, data.credentialId, data.publicKey,
+      data.counter, data.deviceType, data.backedUp ? 1 : 0,
+      JSON.stringify(data.transports), now,
+    ],
+  });
+  return { ...data, id, createdAt: now, lastUsedAt: null };
+}
+
+export async function updateWebAuthnCredentialCounter(id: string, counter: number): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE webauthn_credentials SET counter = ?, last_used_at = ? WHERE id = ?",
+    args: [counter, new Date().toISOString(), id],
+  });
+}
+
+export async function renameWebAuthnCredential(id: string, userId: string, name: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "UPDATE webauthn_credentials SET name = ? WHERE id = ? AND user_id = ?",
+    args: [name, id, userId],
+  });
+}
+
+export async function deleteWebAuthnCredential(id: string, userId: string): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  "DELETE FROM webauthn_credentials WHERE id = ? AND user_id = ?",
+    args: [id, userId],
+  });
+}
+
+export async function deleteAllWebAuthnCredentials(userId: string): Promise<void> {
+  await ensureReady();
+  await client.execute({ sql: "DELETE FROM webauthn_credentials WHERE user_id = ?", args: [userId] });
+}
+
+// ─── Game data ────────────────────────────────────────────────────────────────
+
+export interface GameCivilization {
+  id:          string;
+  game:        string;
+  slug:        string;
+  name:        string;
+  description: string;
+  iconUrl:     string;
+  dlc:         string | null;
+  winRate:     number | null;
+  pickRate:    number | null;
+  gamesCount:  number | null;
+  data:        Record<string, unknown>;
+  updatedAt:   string;
+}
+
+export interface GameSyncLog {
+  id:             number;
+  game:           string;
+  source:         string;
+  status:         "success" | "error";
+  recordsUpdated: number;
+  error:          string | null;
+  syncedAt:       string;
+}
+
+function toGameCivilization(row: Record<string, unknown>): GameCivilization {
+  let data: Record<string, unknown> = {};
+  try { data = JSON.parse(String(row.data ?? "{}")); } catch { /* invalid json */ }
+  return {
+    id:          String(row.id),
+    game:        String(row.game),
+    slug:        String(row.slug),
+    name:        String(row.name),
+    description: String(row.description ?? ""),
+    iconUrl:     String(row.icon_url ?? ""),
+    dlc:         row.dlc ? String(row.dlc) : null,
+    winRate:     row.win_rate != null ? Number(row.win_rate) : null,
+    pickRate:    row.pick_rate != null ? Number(row.pick_rate) : null,
+    gamesCount:  row.games_count != null ? Number(row.games_count) : null,
+    data,
+    updatedAt:   String(row.updated_at),
+  };
+}
+
+function toGameSyncLog(row: Record<string, unknown>): GameSyncLog {
+  return {
+    id:             Number(row.id),
+    game:           String(row.game),
+    source:         String(row.source),
+    status:         String(row.status) === "success" ? "success" : "error",
+    recordsUpdated: Number(row.records_updated ?? 0),
+    error:          row.error ? String(row.error) : null,
+    syncedAt:       String(row.synced_at),
+  };
+}
+
+export async function getGameCivilizations(game: string): Promise<GameCivilization[]> {
+  await ensureReady();
+  const { rows } = await client.execute({
+    sql:  "SELECT * FROM game_civilizations WHERE game = ? ORDER BY name ASC",
+    args: [game],
+  });
+  return rows.map(toGameCivilization);
+}
+
+type UpsertCiv = {
+  slug:        string;
+  name:        string;
+  description?: string;
+  iconUrl?:    string;
+  dlc?:        string | null;
+  winRate?:    number | null;
+  pickRate?:   number | null;
+  gamesCount?: number | null;
+  data?:       Record<string, unknown>;
+};
+
+export async function upsertGameCivilizations(game: string, civs: UpsertCiv[]): Promise<number> {
+  await ensureReady();
+  const now = new Date().toISOString();
+  for (const civ of civs) {
+    await client.execute({
+      sql: `INSERT OR REPLACE INTO game_civilizations
+              (id, game, slug, name, description, icon_url, dlc, win_rate, pick_rate, games_count, data, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `${game}-${civ.slug}`, game, civ.slug, civ.name,
+        civ.description ?? "",
+        civ.iconUrl ?? "",
+        civ.dlc ?? null,
+        civ.winRate ?? null,
+        civ.pickRate ?? null,
+        civ.gamesCount ?? null,
+        JSON.stringify(civ.data ?? {}),
+        now,
+      ],
+    });
+  }
+  return civs.length;
+}
+
+export async function getGameSyncLogs(game?: string): Promise<GameSyncLog[]> {
+  await ensureReady();
+  if (game) {
+    const { rows } = await client.execute({
+      sql:  "SELECT * FROM game_sync_logs WHERE game = ? ORDER BY synced_at DESC LIMIT 5",
+      args: [game],
+    });
+    return rows.map(toGameSyncLog);
+  }
+  const { rows } = await client.execute(
+    "SELECT * FROM game_sync_logs ORDER BY synced_at DESC LIMIT 40"
+  );
+  return rows.map(toGameSyncLog);
+}
+
+export async function createGameSyncLog(
+  data: Omit<GameSyncLog, "id">
+): Promise<void> {
+  await ensureReady();
+  await client.execute({
+    sql:  `INSERT INTO game_sync_logs (game, source, status, records_updated, error, synced_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [data.game, data.source, data.status, data.recordsUpdated, data.error ?? null, data.syncedAt],
+  });
+}
+
+// ─── Game entities (units, buildings, technologies) ───────────────────────────
+
+export interface GameEntity {
+  id:           string;
+  game:         string;
+  civilization: string | null;
+  type:         "unit" | "building" | "technology";
+  slug:         string;
+  name:         string;
+  description:  string;
+  iconUrl:      string;
+  category:     string;
+  age:          string;
+  stats:        Record<string, unknown>;
+  updatedAt:    string;
+}
+
+function toGameEntity(row: Record<string, unknown>): GameEntity {
+  let stats: Record<string, unknown> = {};
+  try { stats = JSON.parse(String(row.stats ?? "{}")); } catch { /* invalid json */ }
+  const type = String(row.type ?? "unit");
+  return {
+    id:           String(row.id),
+    game:         String(row.game),
+    civilization: row.civilization ? String(row.civilization) : null,
+    type:         (type === "building" || type === "technology") ? type : "unit",
+    slug:         String(row.slug),
+    name:         String(row.name),
+    description:  String(row.description ?? ""),
+    iconUrl:      String(row.icon_url ?? ""),
+    category:     String(row.category ?? ""),
+    age:          String(row.age ?? ""),
+    stats,
+    updatedAt:    String(row.updated_at),
+  };
+}
+
+export async function getGameEntities(
+  game: string,
+  civilization?: string,
+  type?: "unit" | "building" | "technology",
+): Promise<GameEntity[]> {
+  await ensureReady();
+  if (civilization && type) {
+    const { rows } = await client.execute({
+      sql:  "SELECT * FROM game_entities WHERE game = ? AND (civilization = ? OR civilization IS NULL) AND type = ? ORDER BY age ASC, name ASC",
+      args: [game, civilization, type],
+    });
+    return rows.map(toGameEntity);
+  }
+  if (civilization) {
+    const { rows } = await client.execute({
+      sql:  "SELECT * FROM game_entities WHERE game = ? AND (civilization = ? OR civilization IS NULL) ORDER BY type ASC, age ASC, name ASC",
+      args: [game, civilization],
+    });
+    return rows.map(toGameEntity);
+  }
+  const { rows } = await client.execute({
+    sql:  "SELECT * FROM game_entities WHERE game = ? ORDER BY type ASC, civilization ASC, age ASC, name ASC",
+    args: [game],
+  });
+  return rows.map(toGameEntity);
+}
+
+type UpsertEntity = {
+  civilization: string | null;
+  type:         "unit" | "building" | "technology";
+  slug:         string;
+  name:         string;
+  description?: string;
+  iconUrl?:     string;
+  category?:    string;
+  age?:         string;
+  stats?:       Record<string, unknown>;
+};
+
+export async function upsertGameEntities(game: string, entities: UpsertEntity[]): Promise<number> {
+  await ensureReady();
+  const now = new Date().toISOString();
+  for (const e of entities) {
+    const civPart = e.civilization ?? "shared";
+    await client.execute({
+      sql: `INSERT OR REPLACE INTO game_entities
+              (id, game, civilization, type, slug, name, description, icon_url, category, age, stats, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        `${game}-${civPart}-${e.type}-${e.slug}`,
+        game,
+        e.civilization ?? null,
+        e.type,
+        e.slug,
+        e.name,
+        e.description ?? "",
+        e.iconUrl ?? "",
+        e.category ?? "",
+        e.age ?? "",
+        JSON.stringify(e.stats ?? {}),
+        now,
+      ],
+    });
+  }
+  return entities.length;
 }

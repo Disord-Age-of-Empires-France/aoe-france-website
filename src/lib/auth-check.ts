@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getSession, getPending2FA } from "@/lib/session";
 import { getUser } from "@/lib/db";
 import type { UserRole } from "@/lib/session";
 
@@ -13,7 +13,12 @@ interface BOSession {
 // ne se re-exécute pas côté serveur lors des navigations douces).
 export async function requireBOAccess(): Promise<BOSession> {
   const session = await getSession();
-  if (!session) redirect("/admin/login");
+  if (!session) {
+    // Si un pending 2FA existe, renvoyer vers la page de vérification
+    const pending = await getPending2FA();
+    if (pending) redirect("/2fa");
+    redirect("/admin/login");
+  }
 
   const user = await getUser(session.userId);
   if (!user || user.role === "member") redirect("/force-logout");

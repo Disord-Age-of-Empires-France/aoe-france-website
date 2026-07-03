@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import DiscordIcon from "@/components/DiscordIcon";
 import { getSettings } from "@/lib/db";
+import { APP_VERSION } from "@/lib/version";
 
 const footerLinks = {
   jeux: [
@@ -141,7 +142,8 @@ export default async function Footer() {
       <div className="border-t border-border-site">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-faint text-xs">
-            © 2026 Age of Empires France. Tous droits réservés.
+            © 2026 Age of Empires France. Tous droits réservés.{" "}
+            <span className="text-faint/50">v{APP_VERSION}</span>
           </p>
           <div className="flex items-center gap-4">
             <Link href="/mentions-legales" className="text-faint hover:text-muted text-xs transition-colors">

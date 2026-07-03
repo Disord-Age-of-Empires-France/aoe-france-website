@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown, Menu, X, LogOut, User, CircleUser, Shield, AlertTriangle } from "lucide-react";
 import DiscordIcon from "@/components/DiscordIcon";
 import ThemeToggle from "@/components/ThemeToggle";
+import NotificationBell from "@/components/NotificationBell";
 import MaintenanceCountdown from "@/components/maintenance/MaintenanceCountdown";
 import type { UserRole } from "@/lib/session";
 import { GAME_NAV_ITEMS, SECTION_NAV_ITEMS, type GameId, type SectionId } from "@/lib/nav-items";
@@ -69,6 +70,7 @@ export default function Navbar({ discordInvite = "#discord", session, features, 
     });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -181,6 +183,7 @@ export default function Navbar({ discordInvite = "#discord", session, features, 
         {session ? (
           <div className="hidden lg:flex items-center gap-2 shrink-0">
             <ThemeToggle />
+            <NotificationBell />
             {/* User dropdown */}
             <div
               className="relative"
@@ -261,26 +264,74 @@ export default function Navbar({ discordInvite = "#discord", session, features, 
       {/* Mobile menu */}
       {mobileOpen && (
         <nav className="lg:hidden bg-surface border-t border-border-site px-4 py-4 space-y-1">
-          {navLinks.map((link) => (
-            <Link
-              key={link.label}
-              href={link.href}
-              className="block py-2.5 text-sm font-semibold tracking-wider text-foreground/70 hover:text-[#c8a32e] transition-colors border-b border-border-site/50"
-              onClick={() => setMobileOpen(false)}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {navLinks.map((link) => {
+            const items: { label: string; href: string }[] =
+              "resolvedDropdown" in link && link.resolvedDropdown ? link.resolvedDropdown : [];
+            const hasDropdown = items.length > 0;
+            const isExpanded = expandedMobile === link.label;
+
+            if (!hasDropdown) {
+              return (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  className="block py-2.5 text-sm font-semibold tracking-wider text-foreground/70 hover:text-[#c8a32e] transition-colors border-b border-border-site/50"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              );
+            }
+
+            return (
+              <div key={link.label} className="border-b border-border-site/50">
+                <button
+                  type="button"
+                  onClick={() => setExpandedMobile(isExpanded ? null : link.label)}
+                  className={`w-full flex items-center justify-between py-2.5 text-sm font-semibold tracking-wider transition-colors ${
+                    isExpanded ? "text-[#c8a32e]" : "text-foreground/70 hover:text-[#c8a32e]"
+                  }`}
+                >
+                  {link.label}
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {isExpanded && (
+                  <div className="pb-2 pl-3 space-y-0.5 border-l-2 border-[#c8a32e]/30 ml-1 mb-1">
+                    {items.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`block py-2 pl-3 text-[13px] font-medium transition-colors rounded ${
+                          pathname === item.href
+                            ? "text-[#c8a32e]"
+                            : "text-foreground/60 hover:text-[#c8a32e] hover:bg-surface-2"
+                        }`}
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {session ? (
             <div className="mt-3 space-y-2">
-              <Link
-                href="/profil"
-                className="flex items-center gap-2 px-3 py-2 border border-border-site hover:border-[#c8a32e]/50 rounded text-sm text-foreground/70 hover:text-[#c8a32e] transition-colors"
-                onClick={() => setMobileOpen(false)}
-              >
-                <User size={14} />
-                <span>{session.username}</span>
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/profil"
+                  className="flex-1 flex items-center gap-2 px-3 py-2 border border-border-site hover:border-[#c8a32e]/50 rounded text-sm text-foreground/70 hover:text-[#c8a32e] transition-colors"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <User size={14} />
+                  <span>{session.username}</span>
+                </Link>
+                <NotificationBell />
+              </div>
               {(session.role === "admin" || session.role === "editor") && (
                 <Link
                   href="/admin"

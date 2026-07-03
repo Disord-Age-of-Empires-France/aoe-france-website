@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { MessageCircle, Users, BookOpen, Trophy, Calendar } from "lucide-react";
+import { Users, BookOpen, Trophy, Calendar } from "lucide-react";
 import DiscordIcon from "@/components/DiscordIcon";
 import { getPublishedArticles, getSettings } from "@/lib/db";
 
@@ -23,12 +23,7 @@ function formatDate(iso: string): string {
   }
 }
 
-const discordStats = [
-  { icon: <Users size={14} />, text: "Plus de 4 000 membres" },
-  { icon: <BookOpen size={14} />, text: "Channels dédiés à chaque jeu" },
-  { icon: <Trophy size={14} />, text: "Aide, coaching et conseils" },
-  { icon: <Calendar size={14} />, text: "Tournois et événements réguliers" },
-];
+import { getDiscordMemberCount } from "@/lib/discord";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -54,6 +49,19 @@ export default async function NewsSection() {
     getSettings(),
   ]);
 
+  const memberCount = discordInvite ? await getDiscordMemberCount(discordInvite) : null;
+
+  const memberText = memberCount
+    ? `${memberCount.toLocaleString("fr-FR")} membres`
+    : "Plus de 4 000 membres";
+
+  const discordStats = [
+    { icon: <Users size={14} />,    text: memberText },
+    { icon: <BookOpen size={14} />, text: "Channels dédiés à chaque jeu" },
+    { icon: <Trophy size={14} />,   text: "Aide, coaching et conseils" },
+    { icon: <Calendar size={14} />, text: "Tournois et événements réguliers" },
+  ];
+
   return (
     <section className="bg-background py-16 px-4 border-t border-border-site">
       <div className="max-w-7xl mx-auto">
@@ -77,6 +85,7 @@ export default async function NewsSection() {
                       {/* Thumbnail */}
                       <div className="shrink-0 w-20 h-16 rounded bg-surface-2 border border-border-site overflow-hidden">
                         {article.thumbnail && (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={article.thumbnail}
                             alt={article.title}

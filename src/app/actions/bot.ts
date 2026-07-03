@@ -47,8 +47,9 @@ export async function createBotCommandAction(_: State, formData: FormData): Prom
     action:   "bot.command_create",
     target:   `/${data.name}`,
     targetId: cmd.id,
+    meta:     { category: data.category, ...(data.description ? { description: data.description.slice(0, 80) } : {}) },
   });
-  redirect("/admin/bot");
+  redirect("/admin/parametres?tab=bot");
 }
 
 export async function updateBotCommandAction(id: string, _: State, formData: FormData): Promise<State> {
@@ -64,8 +65,9 @@ export async function updateBotCommandAction(id: string, _: State, formData: For
     action:   "bot.command_update",
     target:   `/${data.name}`,
     targetId: id,
+    meta:     { category: data.category },
   });
-  redirect("/admin/bot");
+  redirect("/admin/parametres?tab=bot");
 }
 
 export async function deleteBotCommandAction(id: string): Promise<void> {
@@ -81,5 +83,5 @@ export async function deleteBotCommandAction(id: string): Promise<void> {
     target:   cmd ? `/${cmd.name}` : undefined,
     targetId: id,
   });
-  redirect("/admin/bot");
+  redirect("/admin/parametres?tab=bot");
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { toggleReactionAction } from "@/app/actions/forum";
 import type { ForumReaction } from "@/lib/db";
 
@@ -22,32 +22,48 @@ function toMap(reactions: ForumReaction[]): EmojiMap {
   return map;
 }
 
-export default function ReactionBar({ targetId, targetType, reactions, loggedIn }: Props) {
-  const [optimistic, addOptimistic] = useOptimistic(
-    toMap(reactions),
-    (state: EmojiMap, emoji: string) => ({
-      ...state,
-      [emoji]: {
-        count:       state[emoji].userReacted ? state[emoji].count - 1 : state[emoji].count + 1,
-        userReacted: !state[emoji].userReacted,
-      },
-    }),
-  );
+function toggle(map: EmojiMap, emoji: string): EmojiMap {
+  return {
+    ...map,
+    [emoji]: {
+      count:       map[emoji].userReacted ? map[emoji].count - 1 : map[emoji].count + 1,
+      userReacted: !map[emoji].userReacted,
+    },
+  };
+}
 
+export default function ReactionBar({ targetId, targetType, reactions, loggedIn }: Props) {
+  const [reactionMap, setReactionMap] = useState<EmojiMap>(() => toMap(reactions));
+  const [pickerOpen,  setPickerOpen]  = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, startTransition] = useTransition();
+
+  function openPicker()  {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setPickerOpen(true);
+  }
+  function closePicker() {
+    closeTimer.current = setTimeout(() => setPickerOpen(false), 400);
+  }
 
   function handle(emoji: string) {
     if (!loggedIn) {
       window.dispatchEvent(new CustomEvent("open-login"));
       return;
     }
+    // Mise à jour locale immédiate — persiste après la transition
+    setReactionMap(prev => toggle(prev, emoji));
+
     startTransition(async () => {
-      addOptimistic(emoji);
-      await toggleReactionAction(targetId, targetType, emoji);
+      const result = await toggleReactionAction(targetId, targetType, emoji);
+      if (result?.error) {
+        // Annule en cas d'erreur serveur
+        setReactionMap(prev => toggle(prev, emoji));
+      }
     });
   }
 
-  const displayed = EMOJIS.filter((e) => optimistic[e].count > 0);
+  const displayed = EMOJIS.filter((e) => reactionMap[e].count > 0);
 
   const picker = (
     <div className="flex items-center gap-1 bg-surface-2 border border-border-site rounded-lg p-1.5 shadow-lg">
@@ -63,7 +79,7 @@ export default function ReactionBar({ targetId, targetType, reactions, loggedIn 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {displayed.map((emoji) => {
-        const { count, userReacted } = optimistic[emoji];
+        const { count, userReacted } = reactionMap[emoji];
         return (
           <button key={emoji} type="button" onClick={() => handle(emoji)}
             className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all ${
@@ -77,14 +93,16 @@ export default function ReactionBar({ targetId, targetType, reactions, loggedIn 
         );
       })}
 
-      <div className="relative group">
-        <button type="button"
+      <div className="relative" onMouseEnter={openPicker} onMouseLeave={closePicker}>
+        <button type="button" onClick={openPicker}
           className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-border-site text-faint hover:border-[#c8a32e]/30 hover:text-muted text-xs transition-all">
           {displayed.length ? "+" : <><span>+</span><span>Réagir</span></>}
         </button>
-        <div className="absolute bottom-full left-0 mb-1 hidden group-hover:flex z-10">
-          {picker}
-        </div>
+        {pickerOpen && (
+          <div className="absolute bottom-full left-0 mb-1 flex z-10">
+            {picker}
+          </div>
+        )}
       </div>
     </div>
   );

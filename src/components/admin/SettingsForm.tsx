@@ -1,22 +1,30 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { updateSettingsAction } from "@/app/actions/articles";
-import { Save, CheckCircle, AlertCircle, TriangleAlert, X, Settings2, LayoutGrid, Wrench } from "lucide-react";
+import {
+  Save, CheckCircle, AlertCircle, TriangleAlert, X,
+  Settings2, LayoutGrid, Wrench, Bot, Plus, Pencil, ShoppingCart,
+} from "lucide-react";
 import DateTimePicker from "@/components/admin/DateTimePicker";
-import type { SiteSettings } from "@/lib/db";
+import DeleteBotCommand from "@/components/admin/DeleteBotCommand";
+import type { SiteSettings, BotCommand } from "@/lib/db";
 import { GAME_NAV_ITEMS, SECTION_NAV_ITEMS, type GameId, type SectionId } from "@/lib/nav-items";
 
 interface Props {
   initialSettings: SiteSettings;
+  commands: BotCommand[];
 }
 
-type Tab = "general" | "navigation" | "maintenance";
+type Tab = "general" | "navigation" | "maintenance" | "bot" | "boutique";
 
 const TABS: { id: Tab; label: string; Icon: React.ElementType }[] = [
-  { id: "general",     label: "Général",     Icon: Settings2  },
-  { id: "navigation",  label: "Navigation",  Icon: LayoutGrid },
-  { id: "maintenance", label: "Maintenance", Icon: Wrench     },
+  { id: "general",     label: "Général",     Icon: Settings2   },
+  { id: "navigation",  label: "Navigation",  Icon: LayoutGrid  },
+  { id: "maintenance", label: "Maintenance", Icon: Wrench      },
+  { id: "bot",         label: "Bot Discord", Icon: Bot         },
+  { id: "boutique",    label: "Boutique",    Icon: ShoppingCart },
 ];
 
 const FEATURES: { key: "feature_news" | "feature_guides" | "feature_community"; sectionId: SectionId; label: string }[] = [
@@ -44,14 +52,14 @@ function Toggle({ name, defaultChecked, disabled }: { name: string; defaultCheck
   );
 }
 
-export default function SettingsForm({ initialSettings }: Props) {
+export default function SettingsForm({ initialSettings, commands }: Props) {
   const [state, action, pending] = useActionState(updateSettingsAction, undefined);
 
   const maintenanceActive = initialSettings.maintenance.active;
-  const [endAt, setEndAt]         = useState(initialSettings.maintenance.endAt ?? "");
+  const [endAt, setEndAt]             = useState(initialSettings.maintenance.endAt ?? "");
   const [showSuccess, setShowSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("general");
-  const prevPendingRef = useRef(false);
+  const [activeTab, setActiveTab]     = useState<Tab>("general");
+  const prevPendingRef                = useRef(false);
 
   useEffect(() => {
     if (state?.success) {
@@ -67,6 +75,8 @@ export default function SettingsForm({ initialSettings }: Props) {
     }
     prevPendingRef.current = pending;
   }, [pending]);
+
+  const botCategories = Array.from(new Set(commands.map((c) => c.category)));
 
   return (
     <form action={action} className="space-y-5">
@@ -206,6 +216,18 @@ export default function SettingsForm({ initialSettings }: Props) {
             </div>
           </div>
 
+          {/* Coaching */}
+          <div className="border-t border-border-site pt-6">
+            <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-1">Pages standalone</p>
+            <p className="text-xs text-faint mb-5">Désactiver une page la rend inaccessible (404) et retire son lien du menu.</p>
+            <div className="bg-background border border-border-site rounded-lg p-4">
+              <label className="flex items-center gap-4 cursor-pointer">
+                <Toggle name="feature_coaching" defaultChecked={initialSettings.features.coaching} disabled={pending} />
+                <span className="text-sm font-bold text-foreground">Coaching</span>
+              </label>
+            </div>
+          </div>
+
           {/* Jeux */}
           <div className="border-t border-border-site pt-6">
             <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-1">Jeux</p>
@@ -317,19 +339,149 @@ export default function SettingsForm({ initialSettings }: Props) {
             </p>
           </div>
         </div>
+
+        {/* ── Bot Discord ───────────────────────────────────────────── */}
+        <div className={activeTab === "bot" ? "p-6 space-y-5" : "hidden"}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-1">Commandes</p>
+              <p className="text-xs text-faint">
+                {commands.length} commande{commands.length !== 1 ? "s" : ""} — affichées sur la page Communauté.
+              </p>
+            </div>
+            <Link
+              href="/admin/bot/nouveau"
+              className="flex items-center gap-1.5 bg-[#c8a32e] hover:bg-[#b8922a] text-[#080e1a] font-bold text-xs tracking-wider px-4 py-2 rounded transition-colors"
+            >
+              <Plus size={13} />
+              Nouvelle commande
+            </Link>
+          </div>
+
+          {commands.length === 0 ? (
+            <div className="bg-background border border-border-site rounded-lg px-6 py-10 text-center">
+              <Bot size={28} className="text-faint mx-auto mb-2" />
+              <p className="text-faint text-sm">Aucune commande configurée.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {botCategories.map((cat) => (
+                <div key={cat} className="bg-background border border-border-site rounded-lg overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-border-site">
+                    <p className="text-[10px] font-bold tracking-[0.2em] text-[#c8a32e] uppercase">{cat}</p>
+                  </div>
+                  <table className="w-full text-sm">
+                    <tbody className="divide-y divide-border-site/50">
+                      {commands.filter((c) => c.category === cat).map((cmd) => (
+                        <tr key={cmd.id} className="hover:bg-surface transition-colors">
+                          <td className="px-4 py-3">
+                            <span className="font-mono text-foreground font-semibold text-sm">
+                              {cmd.usage || `/${cmd.name}`}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <span className="text-faint text-xs line-clamp-1">{cmd.description}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3 justify-end">
+                              <Link
+                                href={`/admin/bot/${cmd.id}`}
+                                className="flex items-center gap-1 text-faint hover:text-[#c8a32e] text-xs font-medium transition-colors"
+                              >
+                                <Pencil size={12} />Modifier
+                              </Link>
+                              <DeleteBotCommand id={cmd.id} name={cmd.name} />
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Boutique ──────────────────────────────────────────── */}
+        <div className={activeTab === "boutique" ? "p-6 space-y-8" : "hidden"}>
+
+          {/* Steam App IDs */}
+          <div>
+            <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-1">App IDs Steam</p>
+            <p className="text-xs text-faint mb-5">Utilisés pour récupérer automatiquement le prix actuel depuis l&apos;API Steam (cache 30 min).</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {([
+                { id: "aoe2" as const, label: "AoE II: DE",   placeholder: "813780"  },
+                { id: "aoe3" as const, label: "AoE III: DE",  placeholder: "933110"  },
+                { id: "aoe4" as const, label: "AoE IV",       placeholder: "1466860" },
+                { id: "aom"  as const, label: "AoM: Retold",  placeholder: "1934680" },
+              ]).map(({ id, label, placeholder }) => (
+                <div key={id} className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-muted uppercase">{label}</label>
+                  <input
+                    name={`steam_app_id_${id}`}
+                    type="text"
+                    defaultValue={initialSettings.steamAppIds[id] || placeholder}
+                    disabled={pending}
+                    placeholder={placeholder}
+                    className="w-full bg-background border border-border-site focus:border-[#c8a32e] focus:outline-none rounded px-4 py-3 text-foreground placeholder-faint text-sm transition-colors disabled:opacity-60 font-mono"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Textes promo */}
+          <div className="border-t border-border-site pt-6">
+            <p className="text-[10px] font-bold tracking-widest text-faint uppercase mb-1">Bannières promo</p>
+            <p className="text-xs text-faint mb-5">
+              Affiché en bandeau doré sur la page boutique et les pages de présentation. Laissez vide pour ne rien afficher.
+            </p>
+            <div className="space-y-4">
+              {([
+                { id: "aoe2" as const, label: "AoE II: DE"  },
+                { id: "aoe3" as const, label: "AoE III: DE" },
+                { id: "aoe4" as const, label: "AoE IV"      },
+                { id: "aom"  as const, label: "AoM: Retold" },
+              ]).map(({ id, label }) => (
+                <div key={id} className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-muted uppercase">{label}</label>
+                  <input
+                    name={`promo_text_${id}`}
+                    type="text"
+                    defaultValue={initialSettings.promoTexts[id] ?? ""}
+                    disabled={pending}
+                    placeholder={`ex: -50% sur ${label} ce week-end !`}
+                    className="w-full bg-background border border-border-site focus:border-[#c8a32e] focus:outline-none rounded px-4 py-3 text-foreground placeholder-faint text-sm transition-colors disabled:opacity-60"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-border-site pt-6">
+            <p className="text-xs text-faint">
+              Gérez les liens par jeu dans{" "}
+              <a href="/admin/store" className="text-[#c8a32e] hover:underline">Boutique → Liens d&apos;achat</a>.
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Bouton enregistrer */}
-      <div>
-        <button
-          type="submit"
-          disabled={pending}
-          className="flex items-center gap-2 bg-[#c8a32e] hover:bg-[#b8922a] disabled:opacity-60 disabled:cursor-not-allowed text-[#080e1a] font-bold text-sm tracking-wider px-6 py-3 rounded transition-colors"
-        >
-          <Save size={15} />
-          {pending ? "Enregistrement…" : "ENREGISTRER"}
-        </button>
-      </div>
+      {/* Bouton enregistrer — caché sur l'onglet bot */}
+      {activeTab !== "bot" && (
+        <div>
+          <button
+            type="submit"
+            disabled={pending}
+            className="flex items-center gap-2 bg-[#c8a32e] hover:bg-[#b8922a] disabled:opacity-60 disabled:cursor-not-allowed text-[#080e1a] font-bold text-sm tracking-wider px-6 py-3 rounded transition-colors"
+          >
+            <Save size={15} />
+            {pending ? "Enregistrement…" : "ENREGISTRER"}
+          </button>
+        </div>
+      )}
     </form>
   );
 }

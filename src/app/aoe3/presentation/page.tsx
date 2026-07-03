@@ -8,6 +8,7 @@ import { getSession } from "@/lib/session";
 import { gateFeature } from "@/lib/public-access";
 import type { Article } from "@/lib/db";
 import CivIcon from "@/components/aoe4/CivIcon";
+import BuyWidget from "@/components/BuyWidget";
 
 export const metadata = {
   title: "Age of Empires III — Présentation | AoE France",
@@ -199,7 +200,7 @@ export default async function Aoe3PresentationPage() {
             <div className="w-10 h-0.5 bg-green-500 mb-8" />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-4 text-muted leading-relaxed">
+              <div className="lg:col-span-2 flex flex-col gap-4 text-muted leading-relaxed">
                 <p>
                   Age of Empires III vous transporte à l&apos;ère de la colonisation, entre le{" "}
                   <strong className="text-foreground">XVIe et XIXe siècle</strong>. Vous guidez des
@@ -219,6 +220,9 @@ export default async function Aoe3PresentationPage() {
                   des corrections d&apos;équilibre et deux nouvelles civilisations gratuites (Suédois et
                   Incas), faisant d&apos;AoE III le plus accessible qu&apos;il n&apos;ait jamais été.
                 </p>
+                <div className="mt-auto">
+                  <BuyWidget game="aoe3" steamAppId={settings.steamAppIds.aoe3} promoText={settings.promoTexts.aoe3} compact />
+                </div>
               </div>
 
               <div className="space-y-3">

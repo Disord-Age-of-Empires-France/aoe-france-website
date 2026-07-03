@@ -7,6 +7,7 @@ import { getPublishedArticles, getSettings } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { gateFeature } from "@/lib/public-access";
 import type { Article } from "@/lib/db";
+import BuyWidget from "@/components/BuyWidget";
 
 export const metadata = {
   title: "Age of Empires II — Présentation | AoE France",
@@ -217,7 +218,7 @@ export default async function Aoe2PresentationPage() {
             <div className="w-10 h-0.5 bg-purple-500 mb-8" />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-4 text-muted leading-relaxed">
+              <div className="lg:col-span-2 flex flex-col gap-4 text-muted leading-relaxed">
                 <p>
                   Age of Empires II vous plonge dans le Moyen Âge, de la chute de Rome à l&apos;essor
                   de l&apos;Empire ottoman. Vous dirigez votre peuple à travers{" "}
@@ -237,6 +238,9 @@ export default async function Aoe2PresentationPage() {
                   le succès du jeu original. Des DLCs continuent d&apos;ajouter régulièrement de nouvelles
                   civilisations et campagnes.
                 </p>
+                <div className="mt-auto">
+                  <BuyWidget game="aoe2" steamAppId={settings.steamAppIds.aoe2} promoText={settings.promoTexts.aoe2} compact />
+                </div>
               </div>
 
               <div className="space-y-3">

@@ -14,17 +14,29 @@ const ALLOWED_TAGS = [
   "del", "ins", "sup", "sub", "details", "summary",
 ];
 
+function applyMentions(html: string): string {
+  // Preserve code/pre blocks, only process plain text segments
+  const parts = html.split(/(<(?:pre|code)[^>]*>[\s\S]*?<\/(?:pre|code)>)/);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) return part;
+    return part.replace(/@([a-zA-Z0-9_-]{1,50})/g, (_, username) =>
+      `<a href="/profil/${encodeURIComponent(username)}" class="mention">@${username}</a>`
+    );
+  }).join("");
+}
+
 export function renderMarkdown(content: string): string {
   const html = marked.parse(content) as string;
-  return sanitizeHtml(html, {
+  const sanitized = sanitizeHtml(html, {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
       ...sanitizeHtml.defaults.allowedAttributes,
-      a:    ["href", "target", "rel"],
+      a:    ["href", "target", "rel", "class"],
       code: ["class"],
       pre:  ["class"],
       span: ["class"],
     },
     allowedSchemes: ["http", "https", "mailto"],
   });
+  return applyMentions(sanitized);
 }

@@ -22,6 +22,14 @@ function parseValue(value: string): { y: number; mo: number; d: number; h: numbe
   return { y: dt.getFullYear(), mo: dt.getMonth(), d: dt.getDate(), h: dt.getHours(), m: dt.getMinutes() };
 }
 
+function toDatetimeLocalValue(y: number, mo: number, d: number, h: number, m: number): string {
+  return `${y}-${pad(mo + 1)}-${pad(d)}T${pad(h)}:${pad(m)}`;
+}
+
+function toDatetimeLocalMin(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 interface SpinnerProps {
   label: string;
   value: number;
@@ -41,7 +49,7 @@ function TimeSpinner({ label, value, min, max, step = 1, onChange }: SpinnerProp
       <button
         type="button"
         onClick={inc}
-        className="w-8 h-6 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
+        className="w-8 h-8 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
       >
         <ChevronUp size={14} />
       </button>
@@ -51,7 +59,7 @@ function TimeSpinner({ label, value, min, max, step = 1, onChange }: SpinnerProp
       <button
         type="button"
         onClick={dec}
-        className="w-8 h-6 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
+        className="w-8 h-8 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
       >
         <ChevronDown size={14} />
       </button>
@@ -82,12 +90,17 @@ export default function DateTimePicker({ value, onChange, minDate, disabled }: P
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handle(e: MouseEvent) {
+    if (!open) return;
+    function handle(e: MouseEvent | TouchEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
+    document.addEventListener("touchstart", handle);
+    return () => {
+      document.removeEventListener("mousedown", handle);
+      document.removeEventListener("touchstart", handle);
+    };
+  }, [open]);
 
   // Sync external value changes
   useEffect(() => {
@@ -144,6 +157,12 @@ export default function DateTimePicker({ value, onChange, minDate, disabled }: P
     if (selDate) onChange(toUTCStr(selDate.y, selDate.mo, selDate.d, hours, m));
   }
 
+  function handleNativeChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value; // "YYYY-MM-DDTHH:MM"
+    if (!val) { onChange(""); return; }
+    onChange(new Date(val).toISOString());
+  }
+
   // Build calendar grid (week starts Monday)
   const firstDow = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
@@ -157,109 +176,128 @@ export default function DateTimePicker({ value, onChange, minDate, disabled }: P
       }) + ` à ${pad(hours)}h${pad(minutes)}`
     : "Choisir une date…";
 
+  const nativeValue = selDate
+    ? toDatetimeLocalValue(selDate.y, selDate.mo, selDate.d, hours, minutes)
+    : "";
+
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center gap-3 bg-background border border-border-site hover:border-[#c8a32e]/60 focus:border-[#c8a32e] focus:outline-none rounded px-4 py-3 text-sm transition-colors disabled:opacity-60 text-left"
-      >
-        <CalendarDays size={15} className="text-faint shrink-0" />
-        <span className={selDate ? "text-foreground" : "text-faint"}>{displayStr}</span>
-      </button>
+    <>
+      {/* ── Mobile : datetime-local natif (picker OS) ──────────────────────── */}
+      <div className="lg:hidden">
+        <input
+          type="datetime-local"
+          value={nativeValue}
+          onChange={handleNativeChange}
+          min={minDate ? toDatetimeLocalMin(minDate) : undefined}
+          disabled={disabled}
+          className="w-full bg-background border border-border-site rounded px-4 py-3 text-sm text-foreground disabled:opacity-60 focus:outline-none focus:border-[#c8a32e] [color-scheme:dark]"
+        />
+      </div>
 
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-50 bg-surface border border-border-site rounded-xl shadow-2xl p-4 w-72">
-          {/* Month navigation */}
-          <div className="flex items-center justify-between mb-3">
-            <button
-              type="button"
-              onClick={prevMonth}
-              className="w-7 h-7 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
-            >
-              <ChevronLeft size={15} />
-            </button>
-            <span className="text-sm font-semibold text-foreground">
-              {MONTHS_FR[viewMonth]} {viewYear}
-            </span>
-            <button
-              type="button"
-              onClick={nextMonth}
-              className="w-7 h-7 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
-            >
-              <ChevronRight size={15} />
-            </button>
-          </div>
+      {/* ── Desktop : calendrier custom ─────────────────────────────────────── */}
+      <div ref={ref} className="relative hidden lg:block">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen(v => !v)}
+          className="w-full flex items-center gap-3 bg-background border border-border-site hover:border-[#c8a32e]/60 focus:border-[#c8a32e] focus:outline-none rounded px-4 py-3 text-sm transition-colors disabled:opacity-60 text-left"
+        >
+          <CalendarDays size={15} className="text-faint shrink-0" />
+          <span className={selDate ? "text-foreground" : "text-faint"}>{displayStr}</span>
+        </button>
 
-          {/* Day headers */}
-          <div className="grid grid-cols-7 mb-1">
-            {DAYS_FR.map((d) => (
-              <div key={d} className="text-[10px] text-faint text-center font-semibold tracking-wider py-1">
-                {d}
-              </div>
-            ))}
-          </div>
+        {open && (
+          <div className="absolute top-full left-0 mt-1.5 z-50 bg-surface border border-border-site rounded-xl shadow-2xl p-4 w-72">
+            {/* Month navigation */}
+            <div className="flex items-center justify-between mb-3">
+              <button
+                type="button"
+                onClick={prevMonth}
+                className="w-7 h-7 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              <span className="text-sm font-semibold text-foreground">
+                {MONTHS_FR[viewMonth]} {viewYear}
+              </span>
+              <button
+                type="button"
+                onClick={nextMonth}
+                className="w-7 h-7 flex items-center justify-center text-faint hover:text-foreground hover:bg-surface-2 rounded transition-colors"
+              >
+                <ChevronRight size={15} />
+              </button>
+            </div>
 
-          {/* Calendar grid */}
-          <div className="grid grid-cols-7 gap-0.5">
-            {cells.map((day, i) =>
-              day === null ? (
-                <div key={i} />
-              ) : (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={isDisabled(day)}
-                  onClick={() => selectDay(day)}
-                  className={`text-xs rounded-md py-1.5 font-medium transition-colors ${
-                    isSelected(day)
-                      ? "bg-[#c8a32e] text-[#080e1a] font-bold"
-                      : isDisabled(day)
-                      ? "text-faint/25 cursor-not-allowed"
-                      : isToday(day)
-                      ? "border border-[#c8a32e]/40 text-[#c8a32e] hover:bg-[#c8a32e]/10"
-                      : "text-muted hover:bg-surface-2 hover:text-foreground"
-                  }`}
-                >
-                  {day}
-                </button>
-              )
+            {/* Day headers */}
+            <div className="grid grid-cols-7 mb-1">
+              {DAYS_FR.map((d) => (
+                <div key={d} className="text-[10px] text-faint text-center font-semibold tracking-wider py-1">
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7 gap-0.5">
+              {cells.map((day, i) =>
+                day === null ? (
+                  <div key={i} />
+                ) : (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={isDisabled(day)}
+                    onClick={() => selectDay(day)}
+                    className={`text-xs rounded-md py-1.5 font-medium transition-colors ${
+                      isSelected(day)
+                        ? "bg-[#c8a32e] text-[#080e1a] font-bold"
+                        : isDisabled(day)
+                        ? "text-faint/25 cursor-not-allowed"
+                        : isToday(day)
+                        ? "border border-[#c8a32e]/40 text-[#c8a32e] hover:bg-[#c8a32e]/10"
+                        : "text-muted hover:bg-surface-2 hover:text-foreground"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* Time picker */}
+            <div className="mt-4 pt-4 border-t border-border-site flex items-center justify-center gap-4">
+              <TimeSpinner
+                label="Heure"
+                value={hours}
+                min={0}
+                max={23}
+                step={1}
+                onChange={updateHours}
+              />
+              <span className="text-2xl font-bold text-muted pb-1">:</span>
+              <TimeSpinner
+                label="Minutes"
+                value={minutes}
+                min={0}
+                max={55}
+                step={5}
+                onChange={updateMinutes}
+              />
+            </div>
+
+            {selDate && (
+              <button
+                type="button"
+                onClick={() => { setOpen(false); }}
+                className="mt-3 w-full py-2 bg-[#c8a32e] hover:bg-[#b8922a] text-[#080e1a] font-bold text-xs tracking-wider rounded transition-colors"
+              >
+                Confirmer
+              </button>
             )}
           </div>
-
-          {/* Time picker */}
-          <div className="mt-4 pt-4 border-t border-border-site flex items-center justify-center gap-4">
-            <TimeSpinner
-              label="Heure"
-              value={hours}
-              min={0}
-              max={23}
-              step={1}
-              onChange={updateHours}
-            />
-            <span className="text-2xl font-bold text-muted pb-1">:</span>
-            <TimeSpinner
-              label="Minutes"
-              value={minutes}
-              min={0}
-              max={55}
-              step={5}
-              onChange={updateMinutes}
-            />
-          </div>
-
-          {selDate && (
-            <button
-              type="button"
-              onClick={() => { setOpen(false); }}
-              className="mt-3 w-full py-2 bg-[#c8a32e] hover:bg-[#b8922a] text-[#080e1a] font-bold text-xs tracking-wider rounded transition-colors"
-            >
-              Confirmer
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }

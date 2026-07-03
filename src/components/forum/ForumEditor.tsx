@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Eye, Edit3, Bold, Italic, List, Code, Link as LinkIcon, Smile } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Eye, Edit3, Bold, Italic, List, Code, Link as LinkIcon, Smile, AtSign } from "lucide-react";
 
 interface Props {
   name: string;
@@ -10,6 +10,11 @@ interface Props {
   maxLength?: number;
   defaultValue?: string;
   rows?: number;
+}
+
+interface MentionUser {
+  username:    string;
+  displayName: string;
 }
 
 const TOOLBAR = [
@@ -48,16 +53,20 @@ const EMOJI_CATEGORIES: { label: string; emojis: string[] }[] = [
 ];
 
 export default function ForumEditor({ name, placeholder, minLength, maxLength = 20000, defaultValue = "", rows = 8 }: Props) {
-  const [value,      setValue]      = useState(defaultValue);
-  const [activeTab,  setActiveTab]  = useState<"edit" | "preview">("edit");
-  const [preview,    setPreview]    = useState("");
-  const [emojiOpen,  setEmojiOpen]  = useState(false);
-  const [emojiCat,   setEmojiCat]   = useState(0);
+  const [value,         setValue]        = useState(defaultValue);
+  const [activeTab,     setActiveTab]    = useState<"edit" | "preview">("edit");
+  const [preview,       setPreview]      = useState("");
+  const [emojiOpen,     setEmojiOpen]    = useState(false);
+  const [emojiCat,      setEmojiCat]     = useState(0);
+  const [mentionQuery,  setMentionQuery] = useState<string | null>(null);
+  const [mentionUsers,  setMentionUsers] = useState<MentionUser[]>([]);
+  const [mentionIndex,  setMentionIndex] = useState(0);
 
-  const emojiRef  = useRef<HTMLDivElement>(null);
-  const taRef     = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+  const emojiRef    = useRef<HTMLDivElement>(null);
+  const mentionRef  = useRef<HTMLDivElement>(null);
+  const taRef       = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
 
-  // Close picker on outside click
+  // Close emoji picker on outside click
   useEffect(() => {
     if (!emojiOpen) return;
     function handle(e: MouseEvent) {
@@ -68,6 +77,50 @@ export default function ForumEditor({ name, placeholder, minLength, maxLength = 
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, [emojiOpen]);
+
+  // Injection externe de mention via événement DOM
+  useEffect(() => {
+    function handle(e: Event) {
+      const username = (e as CustomEvent<{ username: string }>).detail.username;
+      const mention  = `@${username} `;
+      setValue(prev => mention + prev);
+      setActiveTab("edit");
+      setTimeout(() => {
+        const ta = getTextarea();
+        if (!ta) return;
+        ta.focus();
+        ta.setSelectionRange(mention.length, mention.length);
+      }, 0);
+    }
+    document.addEventListener("forum:mention", handle);
+    return () => document.removeEventListener("forum:mention", handle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+
+  // Close mention dropdown on outside click
+  useEffect(() => {
+    if (mentionQuery === null) return;
+    function handle(e: MouseEvent) {
+      if (mentionRef.current && !mentionRef.current.contains(e.target as Node)) {
+        setMentionQuery(null);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [mentionQuery]);
+
+  // Fetch mention suggestions
+  const fetchMentions = useCallback(async (q: string) => {
+    if (!q) { setMentionUsers([]); return; }
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json() as { users: MentionUser[] };
+      setMentionUsers(data.users ?? []);
+      setMentionIndex(0);
+    } catch {
+      setMentionUsers([]);
+    }
+  }, []);
 
   async function switchToPreview() {
     if (value.trim()) {
@@ -119,10 +172,64 @@ export default function ForumEditor({ name, placeholder, minLength, maxLength = 
     }, 0);
   }
 
+  function insertMention(username: string) {
+    const ta = getTextarea();
+    if (!ta) return;
+    const cursor = ta.selectionStart;
+    const textBefore = value.slice(0, cursor);
+    const atIdx = textBefore.lastIndexOf("@");
+    if (atIdx === -1) return;
+    const next = value.slice(0, atIdx) + `@${username} ` + value.slice(cursor);
+    setValue(next);
+    setMentionQuery(null);
+    setMentionUsers([]);
+    setTimeout(() => {
+      ta.focus();
+      const pos = atIdx + username.length + 2;
+      ta.setSelectionRange(pos, pos);
+    }, 0);
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const newVal = e.target.value.slice(0, maxLength);
+    setValue(newVal);
+
+    const cursor = e.target.selectionStart;
+    const textBefore = newVal.slice(0, cursor);
+    const mentionMatch = textBefore.match(/@([a-zA-Z0-9_-]*)$/);
+    if (mentionMatch) {
+      const q = mentionMatch[1];
+      setMentionQuery(q);
+      fetchMentions(q);
+    } else {
+      setMentionQuery(null);
+      setMentionUsers([]);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionQuery === null || mentionUsers.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setMentionIndex(i => (i + 1) % mentionUsers.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setMentionIndex(i => (i - 1 + mentionUsers.length) % mentionUsers.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (mentionUsers[mentionIndex]) {
+        e.preventDefault();
+        insertMention(mentionUsers[mentionIndex].username);
+      }
+    } else if (e.key === "Escape") {
+      setMentionQuery(null);
+      setMentionUsers([]);
+    }
+  }
+
   const pct = Math.min(100, Math.round((value.length / maxLength) * 100));
 
   return (
-    <div className="border border-border-site rounded-lg overflow-visible bg-background">
+    <div className="border border-border-site rounded-lg overflow-visible bg-background relative">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-site bg-surface rounded-t-lg">
         <div className="flex items-center gap-1">
@@ -137,6 +244,29 @@ export default function ForumEditor({ name, placeholder, minLength, maxLength = 
               <Icon size={13} />
             </button>
           ))}
+
+          {/* @mention trigger */}
+          <button
+            type="button"
+            title="Mentionner un utilisateur"
+            onClick={() => {
+              setActiveTab("edit");
+              const ta = getTextarea();
+              if (!ta) return;
+              const cursor = ta.selectionStart;
+              const next = value.slice(0, cursor) + "@" + value.slice(cursor);
+              setValue(next);
+              setMentionQuery("");
+              fetchMentions("");
+              setTimeout(() => {
+                ta.focus();
+                ta.setSelectionRange(cursor + 1, cursor + 1);
+              }, 0);
+            }}
+            className="w-7 h-7 flex items-center justify-center rounded text-faint hover:text-foreground hover:bg-surface-2 transition-colors"
+          >
+            <AtSign size={13} />
+          </button>
 
           {/* Emoji picker trigger */}
           <div className="relative" ref={emojiRef}>
@@ -204,7 +334,8 @@ export default function ForumEditor({ name, placeholder, minLength, maxLength = 
       <textarea
         name={name}
         value={value}
-        onChange={(e) => setValue(e.target.value.slice(0, maxLength))}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
         onSelect={saveSelection}
         onClick={saveSelection}
         onKeyUp={saveSelection}
@@ -222,9 +353,36 @@ export default function ForumEditor({ name, placeholder, minLength, maxLength = 
         </div>
       )}
 
+      {/* @mention dropdown */}
+      {mentionQuery !== null && mentionUsers.length > 0 && (
+        <div
+          ref={mentionRef}
+          className="absolute z-50 left-0 bottom-12 w-64 bg-surface border border-border-site rounded-xl shadow-xl overflow-hidden"
+        >
+          <div className="px-3 py-1.5 text-[10px] font-bold tracking-wider text-faint uppercase border-b border-border-site bg-surface-2/50">
+            Mentionner
+          </div>
+          {mentionUsers.map((u, i) => (
+            <button
+              key={u.username}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); insertMention(u.username); }}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-left ${
+                i === mentionIndex ? "bg-[#c8a32e]/10" : "hover:bg-surface-2"
+              }`}
+            >
+              <span className="text-[#c8a32e] font-bold">@{u.username}</span>
+              {u.displayName !== u.username && (
+                <span className="text-faint text-xs truncate">{u.displayName}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border-site bg-surface rounded-b-lg">
-        <span className="text-[10px] text-faint">Markdown · Emoji supportés</span>
+        <span className="text-[10px] text-faint">Markdown · Emoji · @mentions</span>
         <div className="flex items-center gap-2">
           <div className="w-16 h-1 bg-surface-2 rounded-full overflow-hidden">
             <div className={`h-full rounded-full transition-all ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-400" : "bg-[#c8a32e]"}`} style={{ width: `${pct}%` }} />

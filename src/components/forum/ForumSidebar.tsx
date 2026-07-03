@@ -71,39 +71,6 @@ export default function ForumSidebar({ categories }: Props) {
         </div>
       </nav>
 
-      {/* ── Mobile : chips horizontales scrollables ── */}
-      <div className="lg:hidden -mx-4 px-4 overflow-x-auto scrollbar-none">
-        <div className="flex gap-2 pb-1 min-w-max">
-          <Link
-            href="/forum"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap border transition-colors ${
-              isIndex
-                ? "bg-[#c8a32e]/10 text-[#c8a32e] border-[#c8a32e]/30"
-                : "text-muted border-border-site hover:text-foreground"
-            }`}
-          >
-            <LayoutGrid size={11} />
-            Toutes
-          </Link>
-          {categories.map((cat) => {
-            const isActive = activeSlug === cat.slug;
-            return (
-              <Link
-                key={cat.id}
-                href={`/forum/${cat.slug}`}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap border transition-colors ${
-                  isActive
-                    ? "bg-[#c8a32e]/10 text-[#c8a32e] border-[#c8a32e]/30"
-                    : "text-muted border-border-site hover:text-foreground"
-                }`}
-              >
-                <span className="text-[11px]">{cat.icon || "💬"}</span>
-                {cat.name}
-              </Link>
-            );
-          })}
-        </div>
-      </div>
     </>
   );
 }

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSession, destroySession, type UserRole } from "@/lib/session";
 import {
-  createUser, updateUser, deleteUser, getUser,
+  createUser, updateUser, updateUserSteam, updateUserXbox, deleteUser, getUser,
   getUserByUsername, countAdminUsers, createLog,
 } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
@@ -46,6 +46,7 @@ export async function createUserAction(
     role:     session?.role ?? "",
     action:   "user.create",
     target:   username,
+    meta:     { role, ...(email ? { email } : {}) },
   });
   revalidatePath("/admin/utilisateurs");
   redirect("/admin/utilisateurs");
@@ -101,7 +102,8 @@ export async function updateUserAction(
     await createLog({
       ...logBase,
       action: "user.role_change",
-      target: `${username}: ${currentUser.role} → ${role}`,
+      target: username,
+      meta:   { from: currentUser.role, to: role },
     });
   } else {
     await createLog({ ...logBase, action: "user.update", target: username });
@@ -131,6 +133,7 @@ export async function deleteUserAction(id: string): Promise<{ error: string } | 
     action:   "user.delete",
     target:   user?.username ?? id,
     targetId: id,
+    meta:     user ? { role: user.role } : undefined,
   });
   revalidatePath("/admin/utilisateurs");
 }
@@ -199,6 +202,34 @@ export async function updateProfileAction(
   revalidatePath("/profil");
   revalidatePath("/admin/profil");
   return { success: true };
+}
+
+// ─── Steam ────────────────────────────────────────────────────────────────────
+
+export async function steamUnlinkAction(): Promise<{ error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: "Non authentifié." };
+  await updateUserSteam(session.userId, null, "", "");
+  revalidatePath("/profil");
+  return {};
+}
+
+export async function xboxSaveAction(gamertag: string): Promise<{ error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: "Non authentifié." };
+  const clean = gamertag.trim().slice(0, 52);
+  if (!clean) return { error: "Gamertag invalide." };
+  await updateUserXbox(session.userId, clean, clean, "");
+  revalidatePath("/profil");
+  return {};
+}
+
+export async function xboxUnlinkAction(): Promise<{ error?: string }> {
+  const session = await getSession();
+  if (!session) return { error: "Non authentifié." };
+  await updateUserXbox(session.userId, null, "", "");
+  revalidatePath("/profil");
+  return {};
 }
 
 // ─── Delete own account ───────────────────────────────────────────────────────

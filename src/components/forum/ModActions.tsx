@@ -48,7 +48,7 @@ export function TopicModBar({ topicId, pinned, locked, canMod, canDelete }: Topi
           </>
         )}
         {canDelete && (
-          <button type="button" onClick={handleDelete} title="Désactiver le sujet"
+          <button type="button" onClick={handleDelete} title={canMod ? "Désactiver le sujet" : "Supprimer le sujet"}
             className="p-1.5 rounded text-faint hover:text-red-400 hover:bg-red-500/10 transition-colors">
             <Trash2 size={14} />
           </button>

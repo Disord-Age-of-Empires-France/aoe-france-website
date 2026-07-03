@@ -19,6 +19,7 @@ export default function DeleteBotCommand({ id, name }: Props) {
 
   return (
     <button
+      type="button"
       onClick={handleClick}
       disabled={pending}
       className="flex items-center gap-1.5 text-gray-600 hover:text-red-400 text-sm font-medium transition-colors disabled:opacity-40"

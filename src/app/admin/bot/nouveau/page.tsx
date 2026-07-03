@@ -13,7 +13,7 @@ export default async function NouvelleCommandePage() {
     <div className="space-y-6">
       <div>
         <Link
-          href="/admin/bot"
+          href="/admin/parametres?tab=bot"
           className="inline-flex items-center gap-1.5 text-faint hover:text-foreground text-sm mb-4 transition-colors"
         >
           <ArrowLeft size={14} />

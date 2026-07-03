@@ -113,3 +113,14 @@ html.light .site-logo {
 }
 .prose-forum del { text-decoration: line-through; color: var(--aoe-text-faint); }
 .prose-forum p:last-child { margin-bottom: 0; }
+
+/* ── @mentions ─────────────────────────────────────────────────────────────── */
+.mention {
+  color: var(--aoe-gold);
+  font-weight: 600;
+  text-decoration: none;
+}
+.mention:hover {
+  color: var(--aoe-gold-light);
+  text-decoration: underline;
+}

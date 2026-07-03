@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AlertTriangle } from "lucide-react";
 import { getSession } from "@/lib/session";
 import { getSettings } from "@/lib/db";
-import AdminSidebar from "@/components/admin/AdminSidebar";
+import AdminShell from "@/components/admin/AdminShell";
 import MaintenanceCountdown from "@/components/maintenance/MaintenanceCountdown";
 
 export const metadata: Metadata = {
@@ -20,11 +20,10 @@ export default async function AdminLayout({
   if (!session) return <>{children}</>;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-3">
-      <AdminSidebar username={session.username} role={session.role} />
-      <div className="flex-1 flex flex-col overflow-y-auto">
+    <AdminShell username={session.username} role={session.role}>
+      <div className="flex-1 flex flex-col">
         {settings.maintenance.active && (
-          <div className="mx-6 mt-5 rounded-lg bg-red-950/60 border border-red-900/50 px-4 py-3 flex items-start gap-3 shrink-0">
+          <div className="mx-4 lg:mx-6 mt-4 lg:mt-5 rounded-lg bg-red-950/60 border border-red-900/50 px-4 py-3 flex items-start gap-3 shrink-0">
             <AlertTriangle size={15} className="text-red-400 mt-0.5 shrink-0" />
             <div>
               <div className="text-red-400 text-[13px] font-bold">Le site est actuellement en maintenance</div>
@@ -38,9 +37,9 @@ export default async function AdminLayout({
           </div>
         )}
         <main className="flex-1">
-          <div className="max-w-5xl mx-auto px-6 py-8">{children}</div>
+          <div className="max-w-5xl mx-auto px-4 py-6 lg:px-6 lg:py-8">{children}</div>
         </main>
       </div>
-    </div>
+    </AdminShell>
   );
 }

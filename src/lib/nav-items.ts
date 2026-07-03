@@ -56,6 +56,7 @@ export const SECTION_NAV_ITEMS: Record<SectionId, NavItem[]> = {
   community: [
     { key: "discord",      label: "Discord" },
     { key: "forum",        label: "Forum",       href: "/forum" },
+    { key: "coaching",     label: "Coaching",    href: "/coaching" },
     { key: "tournois",     label: "Tournois" },
     { key: "evenements",   label: "Événements" },
     { key: "partenaires",  label: "Partenaires" },
@@ -65,5 +66,5 @@ export const SECTION_NAV_ITEMS: Record<SectionId, NavItem[]> = {
 export const DEFAULT_SECTION_NAV_ITEMS: Record<SectionId, string[]> = {
   news:      ["patch-notes", "evenements", "tournois"],
   guides:    ["aoe2", "aoe3", "aoe4", "aom"],
-  community: ["discord", "forum", "tournois", "evenements", "partenaires"],
+  community: ["discord", "forum", "coaching", "tournois", "evenements", "partenaires"],
 };

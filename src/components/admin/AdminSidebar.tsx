@@ -14,8 +14,11 @@ import {
   Users,
   CircleUser,
   ScrollText,
-  Bot,
   MessageSquare,
+  GraduationCap,
+  ShoppingCart,
+  Swords,
+  X,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -25,21 +28,24 @@ const NAV_ALL = [
   { label: "Tableau de bord", href: "/admin",           icon: LayoutDashboard,  exact: true  },
   { label: "Actualités",      href: "/admin/actualites", icon: Newspaper,        exact: false },
   { label: "Forum",           href: "/admin/forum",      icon: MessageSquare,    exact: false },
+  { label: "Coaching",        href: "/admin/coaching",   icon: GraduationCap,    exact: false },
+  { label: "Boutique",        href: "/admin/store",      icon: ShoppingCart,     exact: false },
 ];
 
 const NAV_ADMIN = [
-  { label: "Utilisateurs",   href: "/admin/utilisateurs", icon: Users,       exact: false },
-  { label: "Bot Discord",    href: "/admin/bot",          icon: Bot,         exact: false },
-  { label: "Logs",           href: "/admin/logs",         icon: ScrollText,  exact: false },
-  { label: "Paramètres",     href: "/admin/parametres",   icon: Settings,    exact: false },
+  { label: "Données du jeu", href: "/admin/game-data",     icon: Swords,      exact: false },
+  { label: "Utilisateurs",   href: "/admin/utilisateurs",  icon: Users,       exact: false },
+  { label: "Logs",           href: "/admin/logs",          icon: ScrollText,  exact: false },
+  { label: "Paramètres",     href: "/admin/parametres",    icon: Settings,    exact: false },
 ];
 
 interface Props {
   username: string;
   role:     UserRole;
+  onClose?: () => void;
 }
 
-export default function AdminSidebar({ username, role }: Props) {
+export default function AdminSidebar({ username, role, onClose }: Props) {
   const pathname = usePathname();
   const navItems = role === "admin" ? [...NAV_ALL, ...NAV_ADMIN] : role === "editor" ? NAV_ALL : [];
 
@@ -50,20 +56,32 @@ export default function AdminSidebar({ username, role }: Props) {
   return (
     <aside className="w-60 shrink-0 flex flex-col bg-surface-3 border-r border-border-site h-screen sticky top-0 overflow-y-auto">
       {/* Logo */}
-      <div className="px-5 py-6 border-b border-border-site">
-        <Link href="/" target="_blank">
-          <Image
-            src="/logo.png"
-            alt="Age of Empires France"
-            width={48}
-            height={48}
-            className="site-logo"
-          />
-        </Link>
-        <div className="mt-3 flex items-center gap-1.5 text-[10px] tracking-widest text-faint uppercase font-semibold">
-          <Shield size={10} />
-          Administration
+      <div className="px-5 py-6 border-b border-border-site flex items-start justify-between gap-2">
+        <div>
+          <Link href="/" target="_blank">
+            <Image
+              src="/logo.png"
+              alt="Age of Empires France"
+              width={48}
+              height={48}
+              className="site-logo"
+            />
+          </Link>
+          <div className="mt-3 flex items-center gap-1.5 text-[10px] tracking-widest text-faint uppercase font-semibold">
+            <Shield size={10} />
+            Administration
+          </div>
         </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="lg:hidden p-1.5 rounded text-faint hover:text-foreground hover:bg-surface transition-colors mt-1"
+            aria-label="Fermer le menu"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}

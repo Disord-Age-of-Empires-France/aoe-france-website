@@ -8,6 +8,7 @@ import { getSession } from "@/lib/session";
 import { gateFeature } from "@/lib/public-access";
 import type { Article } from "@/lib/db";
 import CivIcon from "@/components/aoe4/CivIcon";
+import BuyWidget from "@/components/BuyWidget";
 
 export const metadata = {
   title: "Age of Mythology: Retold — Présentation | AoE France",
@@ -238,7 +239,7 @@ export default async function AomRetoldPresentationPage() {
             <div className="w-10 h-0.5 bg-amber-500 mb-8" />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-4 text-muted leading-relaxed">
+              <div className="lg:col-span-2 flex flex-col gap-4 text-muted leading-relaxed">
                 <p>
                   Age of Mythology: Retold transpose la formule de la saga Age of Empires dans le monde
                   de la{" "}<strong className="text-foreground">mythologie antique</strong>. Vous choisissez
@@ -257,6 +258,9 @@ export default async function AomRetoldPresentationPage() {
                   créatures sont redessinées, les sorts et explosions repensés, et l&apos;éclairage
                   dynamique donne vie aux champs de bataille mythologiques comme jamais auparavant.
                 </p>
+                <div className="mt-auto">
+                  <BuyWidget game="aom" steamAppId={settings.steamAppIds.aom} promoText={settings.promoTexts.aom} compact />
+                </div>
               </div>
 
               <div className="space-y-3">

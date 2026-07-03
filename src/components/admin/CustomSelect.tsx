@@ -41,11 +41,15 @@ export default function CustomSelect({
 
   useEffect(() => {
     if (!open) return;
-    function handle(e: MouseEvent) {
+    function handle(e: MouseEvent | TouchEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
+    document.addEventListener("touchstart", handle);
+    return () => {
+      document.removeEventListener("mousedown", handle);
+      document.removeEventListener("touchstart", handle);
+    };
   }, [open]);
 
   function select(v: string) {
@@ -56,71 +60,99 @@ export default function CustomSelect({
   const selected = findOption(options, value);
 
   return (
-    <div ref={ref} className={`relative ${className ?? ""}`}>
+    <div className={className ?? ""}>
+      {/* Input unique pour la soumission du formulaire */}
       <input type="hidden" name={name} value={value} />
 
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-3 bg-background border border-border-site hover:border-[#c8a32e]/50 focus:outline-none focus:border-[#c8a32e] rounded px-4 py-3 text-sm transition-colors disabled:opacity-60 text-left"
-      >
-        <span className={selected ? "text-foreground" : "text-faint"}>
-          {selected ? selected.label : placeholder}
-        </span>
-        <ChevronDown
-          size={14}
-          className={`shrink-0 text-faint transition-transform duration-150 ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-surface border border-border-site shadow-xl rounded overflow-hidden max-h-72 overflow-y-auto">
+      {/* ── Mobile : select natif (picker OS) ──────────────────────────────── */}
+      <div className="lg:hidden">
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          disabled={disabled}
+          className="w-full bg-background border border-border-site rounded px-4 py-3 text-sm text-foreground disabled:opacity-60 focus:outline-none focus:border-[#c8a32e]"
+        >
+          <option value="" disabled>{placeholder}</option>
           {options.map((item, i) =>
             isGroup(item) ? (
-              <div key={i}>
-                <div className="px-4 py-2 text-[10px] font-bold tracking-widest text-faint uppercase bg-surface-2/60 border-b border-border-site/60">
-                  {item.group}
-                </div>
-                {item.items.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => select(opt.value)}
-                    className={`w-full text-left flex items-center justify-between px-6 py-2.5 text-[13px] font-medium transition-colors ${
-                      value === opt.value
-                        ? "text-[#c8a32e] bg-surface-2"
-                        : "text-foreground/70 hover:text-[#c8a32e] hover:bg-surface-2"
-                    }`}
-                  >
-                    {opt.label}
-                    {value === opt.value && <Check size={12} className="shrink-0" />}
-                  </button>
+              <optgroup key={i} label={item.group}>
+                {item.items.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
-              </div>
+              </optgroup>
             ) : (
-              <button
-                key={i}
-                type="button"
-                onClick={() => select(item.value)}
-                className={`w-full text-left flex items-center justify-between px-4 py-3 text-[13px] font-medium transition-colors ${
-                  value === item.value
-                    ? "text-[#c8a32e] bg-surface-2"
-                    : "text-foreground/70 hover:text-[#c8a32e] hover:bg-surface-2"
-                }`}
-              >
-                <div className="flex items-baseline gap-2">
-                  <span>{item.label}</span>
-                  {item.description && (
-                    <span className="text-[11px] text-faint">{item.description}</span>
-                  )}
-                </div>
-                {value === item.value && <Check size={12} className="shrink-0 text-[#c8a32e]" />}
-              </button>
+              <option key={i} value={item.value}>{item.label}</option>
             )
           )}
-        </div>
-      )}
+        </select>
+      </div>
+
+      {/* ── Desktop : dropdown custom ───────────────────────────────────────── */}
+      <div ref={ref} className="relative hidden lg:block">
+
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 bg-background border border-border-site hover:border-[#c8a32e]/50 focus:outline-none focus:border-[#c8a32e] rounded px-4 py-3 text-sm transition-colors disabled:opacity-60 text-left"
+        >
+          <span className={selected ? "text-foreground" : "text-faint"}>
+            {selected ? selected.label : placeholder}
+          </span>
+          <ChevronDown
+            size={14}
+            className={`shrink-0 text-faint transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {open && (
+          <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-surface border border-border-site shadow-xl rounded overflow-hidden max-h-72 overflow-y-auto">
+            {options.map((item, i) =>
+              isGroup(item) ? (
+                <div key={i}>
+                  <div className="px-4 py-2 text-[10px] font-bold tracking-widest text-faint uppercase bg-surface-2/60 border-b border-border-site/60">
+                    {item.group}
+                  </div>
+                  {item.items.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => select(opt.value)}
+                      className={`w-full text-left flex items-center justify-between px-6 py-2.5 text-[13px] font-medium transition-colors ${
+                        value === opt.value
+                          ? "text-[#c8a32e] bg-surface-2"
+                          : "text-foreground/70 hover:text-[#c8a32e] hover:bg-surface-2"
+                      }`}
+                    >
+                      {opt.label}
+                      {value === opt.value && <Check size={12} className="shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => select(item.value)}
+                  className={`w-full text-left flex items-center justify-between px-4 py-3 text-[13px] font-medium transition-colors ${
+                    value === item.value
+                      ? "text-[#c8a32e] bg-surface-2"
+                      : "text-foreground/70 hover:text-[#c8a32e] hover:bg-surface-2"
+                  }`}
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span>{item.label}</span>
+                    {item.description && (
+                      <span className="text-[11px] text-faint">{item.description}</span>
+                    )}
+                  </div>
+                  {value === item.value && <Check size={12} className="shrink-0 text-[#c8a32e]" />}
+                </button>
+              )
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
